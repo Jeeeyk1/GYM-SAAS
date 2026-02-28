@@ -1,0 +1,77 @@
+# ─── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# Keep .env.example committed (no real secrets)
+!.env.example
+
+# ─── Build Outputs ─────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.expo/
+.expo-shared/
+
+# ─── Nx ────────────────────────────────────────────────────────────────────────
+.nx/cache
+.nx/workspace-data
+
+# ─── TypeScript ────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ─── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Testing ───────────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+jest-results.json
+
+# ─── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ─── Editor ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── Expo / React Native ───────────────────────────────────────────────────────
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+android/
+ios/
+
+# ─── Docker ────────────────────────────────────────────────────────────────────
+# Keep docker-compose.yaml committed
+docker-data/
+
+# ─── Misc ──────────────────────────────────────────────────────────────────────
+*.local
+.cache/
+tmp/
+temp/

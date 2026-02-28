@@ -1,0 +1,52 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gymsaas_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gymsaas
+      POSTGRES_USER: gymsaas
+      POSTGRES_PASSWORD: gymsaas_secret
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U gymsaas -d gymsaas']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: gymsaas_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Uncomment when you want a local DB GUI
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: gymsaas_pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@gymsaas.local
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - '5050:80'
+  #   depends_on:
+  #     - postgres
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,34 @@
+{
+  "name": "mobile",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/mobile/src",
+  "projectType": "application",
+  "tags": ["scope:mobile", "type:app"],
+  "targets": {
+    "start": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm expo start", "cwd": "apps/mobile" }
+    },
+    "build:ios": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm eas build --platform ios", "cwd": "apps/mobile" }
+    },
+    "build:android": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm eas build --platform android", "cwd": "apps/mobile" }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/apps/mobile"],
+      "options": { "jestConfig": "apps/mobile/jest.config.ts" }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": { "lintFilePatterns": ["apps/mobile/**/*.{ts,tsx}"] }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit", "cwd": "apps/mobile" }
+    }
+  }
+}

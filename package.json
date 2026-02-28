@@ -1,0 +1,62 @@
+{
+  "name": "gym-saas",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "api": "nx serve api",
+    "web": "nx serve web",
+    "mobile": "nx start mobile",
+    "build:api": "nx build api",
+    "build:web": "nx build web",
+    "test": "nx run-many --target=test --all",
+    "lint": "nx run-many --target=lint --all",
+    "typecheck": "nx run-many --target=typecheck --all",
+    "migrate:up": "node tools/scripts/migrate.js up",
+    "migrate:down": "node tools/scripts/migrate.js down",
+    "migrate:create": "node tools/scripts/migrate.js create",
+    "migrate:status": "node tools/scripts/migrate.js status",
+    "seed": "ts-node apps/api/src/database/seeds/run.ts",
+    "seed:admin": "ts-node apps/api/src/database/seeds/seed-platform-admin.ts",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "nx": "19.8.14",
+      "@nx/eslint": "19.8.14",
+      "@nx/eslint-plugin": "19.8.14",
+      "@nx/expo": "19.8.14",
+      "@nx/js": "19.8.14",
+      "@nx/nest": "19.8.14",
+      "@nx/next": "19.8.14",
+      "@nx/node": "19.8.14",
+      "@nx/react": "19.8.14",
+      "@nx/react-native": "19.8.14",
+      "@nx/workspace": "19.8.14"
+    }
+  },
+  "devDependencies": {
+    "@nx/eslint": "^19.0.0",
+    "@nx/eslint-plugin": "^19.0.0",
+    "@nx/expo": "^19.0.0",
+    "@nx/js": "^19.0.0",
+    "@nx/nest": "^19.0.0",
+    "@nx/next": "^19.0.0",
+    "@nx/node": "^19.0.0",
+    "@nx/react": "^19.0.0",
+    "@nx/react-native": "^19.0.0",
+    "@nx/workspace": "^19.0.0",
+    "@swc-node/register": "~1.9.1",
+    "@swc/core": "~1.5.7",
+    "@swc/helpers": "~0.5.11",
+    "@types/node": "^20.0.0",
+    "node-pg-migrate": "^6.2.2",
+    "nx": "^19.0.0",
+    "prettier": "^3.0.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.4.0"
+  }
+}

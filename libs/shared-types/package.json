@@ -1,0 +1,11 @@
+{
+    "name": "@gym-saas/shared-types",
+    "version": "0.0.1",
+    "private": true,
+    "main": "./src/index.js",
+    "types": "./src/index.d.ts",
+    "rootDir": "src",
+    "dependencies": {
+        "tslib": "^2.8.1"
+    }
+}
