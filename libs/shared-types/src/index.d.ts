@@ -1,4 +1,5 @@
 export * from './enums';
+export * from './auth.types';
 export * from './client.types';
 export * from './member.types';
 export * from './staff.types';

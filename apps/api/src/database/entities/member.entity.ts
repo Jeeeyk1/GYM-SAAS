@@ -80,7 +80,7 @@ export class Identity {
   @Column({ nullable: true, length: 50, unique: true, type: 'varchar' , default: null })
   phone: string | null;
 
-  @Column({ name: 'password_hash', nullable: true, type: 'text', select: false })
+  @Column({ name: 'password_hash', nullable: true, type: 'text', select: true })
   passwordHash: string | null;
 
   @Column({ default: 'local', length: 50 })

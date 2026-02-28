@@ -71,6 +71,7 @@ export class AuthService {
 
     // This endpoint is exclusively for platform admins
     if (identity.accountType !== AccountType.PLATFORM_ADMIN) {
+        console.log("TEST LOG: Non-admin attempted to log in to admin endpoint:", identity.email);
       throw new UnauthorizedException('Invalid credentials');
     }
 

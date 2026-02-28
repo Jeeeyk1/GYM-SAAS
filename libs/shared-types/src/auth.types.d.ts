@@ -1,35 +1,22 @@
-export declare enum ClientStatus {
-    ONBOARDING = "onboarding",
-    ACTIVE = "active",
-    SUSPENDED = "suspended",
-    DEMO = "demo",
-    CHURNED = "churned"
+import { AccountType, PlatformRole } from './enums';
+export interface GymUserJwtPayload {
+    sub: string;
+    email: string;
+    accountType: AccountType.GYM_USER;
+    type: 'access';
 }
-export declare enum ClientPlan {
-    STARTER = "starter",
-    GROWTH = "growth",
-    ENTERPRISE = "enterprise"
+export interface PlatformAdminJwtPayload {
+    sub: string;
+    email: string;
+    accountType: AccountType.PLATFORM_ADMIN;
+    platformRole: PlatformRole;
+    type: 'access';
 }
-export declare enum MemberStatus {
-    ACTIVE = "active",
-    INACTIVE = "inactive",
-    SUSPENDED = "suspended",
-    PENDING = "pending"
+export type JwtAccessPayload = GymUserJwtPayload | PlatformAdminJwtPayload;
+export interface AuthLoginRequest {
+    email: string;
+    password: string;
 }
-export declare enum CheckInMethod {
-    QR = "qr",
-    MANUAL = "manual",
-    KIOSK = "kiosk",
-    APP = "app"
-}
-export declare enum ActorType {
-    MEMBER = "member",
-    STAFF = "staff",
-    SYSTEM = "system",
-    SUPERADMIN = "superadmin"
-}
-export declare enum StaffStatus {
-    ACTIVE = "active",
-    INACTIVE = "inactive",
-    INVITED = "invited"
+export interface AuthLoginResponse {
+    accessToken: string;
 }

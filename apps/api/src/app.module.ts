@@ -1,15 +1,17 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import { dataSourceOptions } from './database/data-source';
+import { Client } from './database/entities/client.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { MembersModule } from './modules/members/members.module';
 import { CheckInsModule } from './modules/checkins/checkins.module';
+import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { CheckInsModule } from './modules/checkins/checkins.module';
       ...dataSourceOptions,
       autoLoadEntities: true,
     }),
+    TypeOrmModule.forFeature([Client]),
 
     // ─── Domain modules ───────────────────────────────────────────────────────
     AuthModule,
@@ -38,4 +41,8 @@ import { CheckInsModule } from './modules/checkins/checkins.module';
     // FeaturesModule,  ← Phase 1.4
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantContextMiddleware).forRoutes('*');
+  }
+}

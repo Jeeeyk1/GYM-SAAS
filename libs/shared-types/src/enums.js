@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StaffStatus = exports.ActorType = exports.CheckInMethod = exports.MemberStatus = exports.ClientPlan = exports.ClientStatus = void 0;
+exports.PlatformRole = exports.AccountType = exports.StaffStatus = exports.ActorType = exports.CheckInMethod = exports.MemberStatus = exports.ClientPlan = exports.ClientStatus = void 0;
 var ClientStatus;
 (function (ClientStatus) {
     ClientStatus["ONBOARDING"] = "onboarding";
@@ -42,4 +42,13 @@ var StaffStatus;
     StaffStatus["INACTIVE"] = "inactive";
     StaffStatus["INVITED"] = "invited";
 })(StaffStatus || (exports.StaffStatus = StaffStatus = {}));
-//# sourceMappingURL=enums.js.map
+var AccountType;
+(function (AccountType) {
+    AccountType["PLATFORM_ADMIN"] = "PLATFORM_ADMIN";
+    AccountType["GYM_USER"] = "gym_user";
+})(AccountType || (exports.AccountType = AccountType = {}));
+var PlatformRole;
+(function (PlatformRole) {
+    PlatformRole["SUPER_ADMIN"] = "super_admin";
+    PlatformRole["PLATFORM_SUPPORT"] = "platform_support";
+})(PlatformRole || (exports.PlatformRole = PlatformRole = {}));
