@@ -11,6 +11,8 @@ import { AdminModule } from './modules/admin/admin.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { MembersModule } from './modules/members/members.module';
 import { CheckInsModule } from './modules/checkins/checkins.module';
+import { EmailModule } from './modules/email/email.module';
+import { StaffModule } from './modules/staff/staff.module';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 
 @Module({
@@ -33,12 +35,13 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     TypeOrmModule.forFeature([Client]),
 
     // ─── Domain modules ───────────────────────────────────────────────────────
+    EmailModule,
     AuthModule,
     AdminModule,
     ClientsModule,
     MembersModule,
     CheckInsModule,
-    // FeaturesModule,  ← Phase 1.4
+    StaffModule,
   ],
 })
 export class AppModule implements NestModule {

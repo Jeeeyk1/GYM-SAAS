@@ -19,6 +19,12 @@ export class CreateGymDto {
   @IsEmail()
   ownerEmail: string;
 
+  @IsString()
+  ownerFirstName: string;
+
+  @IsString()
+  ownerLastName: string;
+
   @IsOptional()
   @IsIn(['starter', 'growth', 'enterprise'])
   plan?: string;
@@ -30,4 +36,16 @@ export class CreateGymDto {
   @IsOptional()
   @IsDateString()
   demoExpiresAt?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  timezone?: string;
 }

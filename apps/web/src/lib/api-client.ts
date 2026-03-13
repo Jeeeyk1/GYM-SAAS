@@ -5,7 +5,6 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Attach gym slug header automatically from subdomain or localStorage
 apiClient.interceptors.request.use((config) => {
   const gymSlug =
     typeof window !== 'undefined'

@@ -1,141 +1,76 @@
-# GymSaaS Monorepo — Claude Code Context
+# GymSaaS — Technical Implementation Reference
 
-## Project Overview
-Multi-tenant SaaS platform for gyms. Nx monorepo with pnpm workspaces.
-Each gym is a **Client** (tenant). All behavior is config-driven per client.
-
----
-
-## Monorepo Structure
-```
-gym-saas-monorepo/
-├── apps/
-│   ├── api/          NestJS REST API (port 3000)
-│   ├── web/          Next.js 14 admin dashboard (port 3001)
-│   └── mobile/       Expo React Native member app
-├── libs/
-│   ├── shared-types/ DTOs and interfaces shared across all apps
-│   ├── shared-utils/ Pure functions (deepMerge, date utils, member number)
-│   └── shared-config/ Feature keys, permissions, API route constants
-├── CLAUDE.md
-├── database.json     node-pg-migrate config
-├── pnpm-workspace.yaml
-└── .env
-```
-
----
-
-## Tech Stack (API)
-- **Runtime**: Node.js + TypeScript
-- **Framework**: NestJS
-- **Database**: PostgreSQL 16 via TypeORM (query only — never synchronize: true)
-- **Migrations**: node-pg-migrate — raw SQL in apps/api/src/database/migrations/
-- **Auth**: JWT access token (15m) + refresh token (7d httpOnly cookie)
-- **Package manager**: pnpm
+See root `CLAUDE.md` for full product context, business flow, and architecture decisions.
+This file covers implementation details, entity reference, and endpoint inventory.
 
 ---
 
 ## Running the Project
+
 ```bash
 pnpm docker:up          # Start Postgres + Redis
-pnpm migrate:up         # Run all pending migrations
-pnpm seed               # Seed feature definitions + roles
-pnpm api                # Start API (cd apps/api && nest start --watch)
+pnpm migrate:up         # Run pending migrations (run twice to verify idempotency)
+pnpm seed               # Seed feature_definitions + roles
+pnpm seed:admin         # Insert platform admin account (once only)
+pnpm api                # nest start --watch (port 3000)
+pnpm web                # next dev (port 3001)
 ```
 
 ---
 
-## Current Phase Status
+## API Endpoint Inventory
 
-### DONE — Phase 1.1: Auth System
-Files:
-- apps/api/src/modules/auth/ (full module)
-- apps/api/src/database/entities/invite.entity.ts
-- apps/api/src/database/migrations/006_create_invites.sql
+### Auth — no gym-slug required
+```
+POST /auth/login                  GYM_USER login (email + password)
+POST /auth/admin/login            PLATFORM_ADMIN login (email + password)
+POST /auth/accept-invite          Activate account from invite token (sets password)
+POST /auth/register/:gymSlug      Self-register as member (feature-gated)
+POST /auth/refresh                Refresh JWT using httpOnly cookie
+POST /auth/logout                 Clear refresh cookie
+```
 
-Endpoints:
-- POST /auth/login
-- POST /auth/accept-invite    (token + password — activates account)
-- POST /auth/register/:gymSlug  (only if member_self_registration feature enabled)
-- POST /auth/refresh
-- POST /auth/logout
+### Admin — requires JWT + PlatformRoleGuard (super_admin)
+```
+POST /admin/gyms                  Create gym (transactional: client + profile + features + owner staff + role)
+GET  /admin/gyms                  List all gyms
+```
 
-Key design:
-- No public /register. All accounts are created via invite flow.
-- Identity = auth record (email, passwordHash). Decoupled from Member/Staff.
-- One identity can be staff at Gym A and member at Gym B simultaneously.
-- Invite tokens stored in invites table with expiry (default 72h).
+### Clients — requires JWT
+```
+GET   /clients/my-gyms            Gyms where this identity has a role
+GET   /clients/:slug              Get gym by slug (public profile)
+PATCH /clients/:clientId/profile  Update gym profile (owner only — RBAC pending)
+```
 
----
+### Members — requires JWT + x-gym-slug
+```
+GET   /members                    List members (gym_owner, gym_admin, front_desk)
+POST  /members                    Create member + identity + invite + email (gym_owner, gym_admin)
+GET   /members/:id                Get single member (gym_owner, gym_admin, front_desk)
+PATCH /members/:id                Update member (gym_owner, gym_admin)
+PATCH /members/:id/privacy        Update privacy settings (gym_owner, gym_admin, member — own only)
+GET   /me/gym-context             Current user roles + resolved feature configs (any gym user)
+```
 
-### DONE — Phase 1.2: Gym Registration + User System
-Files:
-- apps/api/src/modules/admin/ (full module)
-- apps/api/src/modules/clients/ (full module)
-- apps/api/src/modules/users/ (full module)
+### Staff — requires JWT + x-gym-slug
+```
+GET    /staff          List staff (gym_owner, gym_admin)
+POST   /staff          Create staff + assign role + send invite email (gym_owner, gym_admin)
+GET    /staff/:id      Get single staff member (gym_owner, gym_admin)
+PATCH  /staff/:id      Update staff (gym_owner, gym_admin)
+DELETE /staff/:id      Deactivate staff — sets status=inactive (gym_owner only)
+```
 
-Endpoints:
-  ADMIN (requires x-superadmin-token header):
-    POST   /admin/gyms
-    GET    /admin/gyms
-
-  CLIENTS (requires JWT):
-    GET    /clients/my-gyms
-    GET    /clients/:slug
-    PATCH  /clients/:clientId/profile
-
-  USERS (requires JWT + x-gym-slug header):
-    GET    /members
-    POST   /members              returns { member, inviteToken }
-    GET    /members/:id
-    PATCH  /members/:id
-    PATCH  /members/:id/privacy
-    GET    /staff
-    POST   /staff                returns { staff, inviteToken }
-    GET    /me/gym-context
-
-Key design:
-- Gym creation is platform-admin only (POST /admin/gyms).
-- Flow: admin creates gym → owner gets inviteToken → owner calls /auth/accept-invite.
-- All gym creation is a single DB transaction (client + profile + feature seeding + owner staff + role).
-- Staff role defaults to front_desk, can pass role: "gym_owner" | "gym_admin" | "front_desk".
-
----
-
-### ONGOING — Phase 1.3: Check-in System
-Build this next. Fullx requirements below in the prompt section.
-
-### TODO — Phase 1.4: Gym-Level Feature Overrides
-- GET/PATCH /features — toggle and configure per-gym features
-
-### TODO — Phase 1.5: Community Chat
-- Simple gym-wide chat, DB tables already exist in migration 005
-
----
-
-## Non-Negotiable Rules
-
-### Multi-tenancy
-- Every query on tenant data MUST filter by clientId
-- NEVER take clientId from request body — always from req.tenantContext.clientId
-- Use @CurrentTenant() decorator in controllers
-- TenantContextMiddleware resolves tenant from x-gym-slug header or subdomain
-
-### Database
-- NEVER use TypeORM synchronize: true
-- NEVER modify existing migration files — create new ones
-- All migration SQL must be idempotent (IF NOT EXISTS everywhere)
-- Run migrations twice to verify idempotency
-
-### NestJS Patterns
-- Controllers handle HTTP only
-- Services handle all business logic
-- DTOs use class-validator decorators
-- All service methods have explicit return types
-
-### Security
-- Never log or return passwordHash
-- NEVER expose internal IDs in error messages
+### Check-ins — requires JWT + x-gym-slug
+```
+POST /checkins                         Check in (gym_owner, gym_admin, front_desk, member)
+POST /checkins/:checkInId/checkout     Check out (gym_owner, gym_admin, front_desk)
+GET  /checkins                         History (?memberId=&page=&limit=) (gym_owner, gym_admin, front_desk)
+GET  /checkins/active-members          Currently checked-in members, feature-gated (gym_owner, gym_admin, front_desk)
+GET  /checkins/gym-qr                  Gym QR payload (gym_owner, gym_admin, front_desk)
+GET  /members/:memberId/qr             Member personal QR token (gym_owner, gym_admin, front_desk)
+```
 
 ---
 
@@ -150,18 +85,118 @@ Build this next. Fullx requirements below in the prompt section.
 | ClientFeatureOverride | client_feature_overrides | entities/client-feature.entity.ts |
 | Identity | identities | entities/member.entity.ts |
 | Member | members | entities/member.entity.ts |
-| MemberPrivacySettings | member_privacy_settings | entities/member.entity.ts |
+| MemberPrivacySettings | member_privacy_settings | entities/member.privacy.settings.entity.ts |
 | Staff | staff | entities/member.entity.ts |
 | Invite | invites | entities/invite.entity.ts |
 | CheckIn | check_ins | entities/checkin.entity.ts |
+| AuditLog | audit_logs | entities/checkin.entity.ts |
 
 ---
 
-## Do NOT
-- Add a public registration endpoint
-- Use synchronize: true in TypeORM
-- Modify existing migration files
-- Take client_id from request body
-- Add logic to controllers
-- Expose passwordHash in any response
-- Hardcode role UUIDs — always query roles by name
+## Applied Migrations
+
+| File | Description |
+|------|-------------|
+| 20260222000001_create_clients | clients, client_profiles |
+| 20260222000002_create_feature_system | feature_definitions, client_features, client_feature_overrides |
+| 20260222000003_create_identity_members | identities, members, member_privacy_settings, staff, roles, identity_roles, permissions, role_permissions |
+| 20260222000004_create_operations | check_ins, announcements, audit_logs |
+| 20260222000005_create_chat_structure | chat_rooms, chat_room_members, chat_messages |
+| 20260222000006_create_invites | invites |
+| 20260227000007_add_account_type_to_identities | account_type, platform_role columns on identities |
+| 20260228000007_checkin_checkout | checked_out_at, checkout_method on check_ins; qr_token, qr_token_expires_at on members; partial index |
+
+---
+
+## Key Decorators
+
+```typescript
+@CurrentTenant()  // extracts TenantContext from req.tenantContext
+@CurrentUser()    // extracts JwtPayload from req.user (set by JwtStrategy)
+```
+
+`TenantContext` shape:
+```typescript
+{ clientId: string; clientSlug: string; plan: string; isDemo: boolean }
+```
+
+`JwtPayload` shape (from @gym-saas/shared-types — JwtAccessPayload):
+```typescript
+{ sub: string; email: string; type: 'access'; accountType: AccountType; platformRole: PlatformRole | null }
+```
+
+---
+
+## Check-in Method Reference
+
+| Method | Who calls | Body fields | Resolution |
+|--------|-----------|-------------|------------|
+| `manual` | Staff | `memberId` | Direct lookup, verify clientId matches |
+| `qr_staff_scan` | Staff (after scanning member QR) | `qrToken` | Validate 30d JWT, extract memberId + clientId |
+| `qr_self_scan` | Member (after scanning gym QR) | none | `identityId → member` lookup via JWT sub |
+
+---
+
+## Feature Resolver Cache
+
+`FeatureResolverService` caches resolved feature maps per clientId for 60 seconds.
+Call `featureResolver.invalidate(clientId)` after any feature override update.
+
+---
+
+## Shared Library Notes
+
+- `@gym-saas/shared-types` — `main: ./src/index.js` (compiled), `types: ./src/index.d.ts`
+- `@gym-saas/shared-utils` — `main: ./src/index.js` (compiled), `types: ./src/index.d.ts`
+- Both are resolved at runtime via `NODE_PATH` set by the NestJS CLI binary
+- tsconfig `paths` handles compile-time resolution; both must point to `.js` for runtime
+
+---
+
+## Module Dependency Rules
+
+- `EmailModule` — `@Global()`, no imports, provides `EmailService` to all modules
+- `CheckInsModule` imports: `JwtModule`, TypeORM features, no other domain modules
+- `MembersModule` imports: `AuthModule` (for InviteService)
+- `StaffModule` imports: `AuthModule` (for InviteService)
+- `AdminModule` imports: TypeORM features only (EmailService injected via global EmailModule)
+- `AuthModule` exports: `JwtModule`, `InviteService`, `PassportModule`
+- Circular imports between domain modules are forbidden
+
+---
+
+## Migration Workflow
+
+```bash
+# Create new migration (name uses YYYYMMDD format + sequence):
+# e.g. 20260305000008_add_something.sql
+# Write SQL manually in apps/api/src/database/migrations/
+
+pnpm migrate:up   # apply
+pnpm migrate:up   # run again — must be a no-op (idempotency check)
+```
+
+database.js config at monorepo root:
+- `dir`: `apps/api/src/database/migrations`
+- `checkOrder: false` (our naming uses YYYYMMDDNNNNN, not strict timestamps)
+
+---
+
+## RBAC Implementation Status
+
+PlatformRoleGuard — applied to `/admin/*`, checks `identity.platformRole === 'super_admin'`
+
+GymRoleGuard — active on `MembersController`, `CheckInsController`, and `StaffController`.
+Resolves roles from `identity_roles` table for the current `tenantContext.clientId` on every request.
+Usage pattern:
+```typescript
+@UseGuards(JwtAuthGuard, GymRoleGuard)
+@GymRoles('gym_owner', 'gym_admin')
+@Get('members')
+list(...) {}
+```
+
+System roles per gym (created automatically when a gym is created):
+`gym_owner` | `gym_admin` | `front_desk` | `member`
+
+ClientsController — RBAC not yet enforced (Phase 1.5).

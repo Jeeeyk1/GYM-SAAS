@@ -8,6 +8,7 @@ import { Client } from '../../database/entities/client.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
 import { IdentityRole, Role } from '../../database/entities/role.entity';
 import { AuthModule } from '../auth/auth.module';
+import { GymRoleGuard } from '../../common/guards/gym-role.guard';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { AuthModule } from '../auth/auth.module';
     AuthModule,
   ],
   controllers: [MembersController],
-  providers: [MembersService],
+  providers: [MembersService, GymRoleGuard],
   exports: [MembersService],
 })
 export class MembersModule {}

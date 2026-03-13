@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Member, Identity } from '../../database/entities/member.entity';
@@ -7,6 +7,7 @@ import { Client } from '../../database/entities/client.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
 import { IdentityRole, Role } from '../../database/entities/role.entity';
 import { InviteService } from '../auth/invite.service';
+import { EmailService } from '../email/email.service';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdatePrivacySettingsDto } from './dto/privacy-settings.dto';
@@ -14,6 +15,8 @@ import { formatMemberNumber } from '@gym-saas/shared-utils';
 
 @Injectable()
 export class MembersService {
+  private readonly logger = new Logger(MembersService.name);
+
   constructor(
     @InjectRepository(Member)
     private readonly memberRepo: Repository<Member>,
@@ -30,6 +33,7 @@ export class MembersService {
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     private readonly inviteService: InviteService,
+    private readonly emailService: EmailService,
   ) {}
 
   async list(clientId: string): Promise<Member[]> {
@@ -71,6 +75,19 @@ export class MembersService {
 
     await this.privacyRepo.save(this.privacyRepo.create({ memberId: member.id }));
 
+    // Assign member role in identity_roles so GymRoleGuard recognises them
+    const memberRole = await this.roleRepo.findOne({ where: { name: 'member', clientId } });
+    if (memberRole) {
+      await this.identityRoleRepo.save(
+        this.identityRoleRepo.create({
+          identityId: identity.id,
+          roleId: memberRole.id,
+          clientId,
+          assignedBy: null,
+        }),
+      );
+    }
+
     const invite = await this.inviteService.create({
       clientId,
       identityId: identity.id,
@@ -78,6 +95,19 @@ export class MembersService {
       type: 'member',
       invitedBy: null,
     });
+
+    const client = await this.clientRepo.findOne({ where: { id: clientId } });
+
+    try {
+      await this.emailService.sendMemberWelcome({
+        to: dto.email,
+        memberName: dto.firstName,
+        gymName: client?.name ?? 'the gym',
+        inviteToken: invite.token,
+      });
+    } catch (err) {
+      this.logger.error(`Failed to send member welcome email to ${dto.email}`, err);
+    }
 
     return { member, inviteToken: invite.token };
   }
@@ -98,11 +128,28 @@ export class MembersService {
   }
 
   async updatePrivacy(
+    callerIdentityId: string,
     clientId: string,
     memberId: string,
     dto: UpdatePrivacySettingsDto,
   ): Promise<MemberPrivacySettings> {
-    await this.getById(clientId, memberId);
+    const member = await this.getById(clientId, memberId);
+
+    // Members can only update their own privacy settings
+    const callerRoles = await this.identityRoleRepo
+      .createQueryBuilder('ir')
+      .innerJoin('ir.role', 'r')
+      .select('r.name', 'name')
+      .where('ir.identity_id = :id', { id: callerIdentityId })
+      .andWhere('ir.client_id = :clientId', { clientId })
+      .getRawMany<{ name: string }>();
+
+    const roleNames = callerRoles.map((r) => r.name);
+    const isStaff = roleNames.some((r) => ['gym_owner', 'gym_admin'].includes(r));
+
+    if (!isStaff && member.identityId !== callerIdentityId) {
+      throw new ForbiddenException();
+    }
 
     let settings = await this.privacyRepo.findOne({ where: { memberId } });
     if (!settings) {
