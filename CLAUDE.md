@@ -21,7 +21,9 @@ monorepo/
 │   ├── shared-utils/ Pure utility functions (deepMerge, date utils, member number)
 │   └── shared-config/ Feature keys, permission constants, API route constants
 ├── docs/
-│   └── progress/     Session progress notes
+│   ├── Architecture.md   System architecture reference
+│   ├── progress/         Session progress notes
+│   └── revision/         Breaking change and refactor notes
 ├── CLAUDE.md         This file — full context
 ├── .claude/CLAUDE.md Technical implementation reference
 ├── database.js       node-pg-migrate config
@@ -48,15 +50,12 @@ monorepo/
 
 ## Business Flow — Gym Onboarding
 
-This is the intended production flow. The backend invite token mechanism is built; email delivery is the pending piece.
-
 ```
 1. Platform admin creates a gym via web dashboard
    POST /admin/gyms  { slug, name, ownerEmail, ownerFirstName, ownerLastName, plan }
    → Creates: client + client_profile + feature flags + owner staff record + role
    → Returns: inviteToken (72h expiry)
-   → [PENDING] Sends activation email to ownerEmail with link:
-     https://app.gymsaas.com/activate?token=<inviteToken>
+   → Sends activation email to ownerEmail with link: /activate?token=<inviteToken>
 
 2. Gym owner opens the activation link
    → Web page at /activate?token=xxx
@@ -72,12 +71,12 @@ This is the intended production flow. The backend invite token mechanism is buil
 
 4. Owner invites staff via web dashboard
    → POST /staff { email, firstName, lastName, role }
-   → [PENDING] Email sent to staff with activation link
+   → Email sent to staff with activation link
    → Staff activates, role: FRONT_DESK or GYM_ADMIN scoped to that gym
 
 5. Owner creates members (or members self-register if feature enabled)
-   → POST /members { email, firstName, lastName, membershipType }
-   → [PENDING] Welcome email sent with activation link
+   → POST /members { email, firstName, lastName, membershipType, membershipExpiresAt }
+   → Welcome email sent with activation link
    → Member activates via mobile app or web
 ```
 
@@ -92,23 +91,22 @@ This is the intended production flow. The backend invite token mechanism is buil
 One `Identity` (auth record) can be a staff member at Gym A and a member at Gym B simultaneously. The identity holds credentials. Member and Staff records hold the gym-scoped profile.
 
 ```
-Identity (identities table)
+Identity (identities table)            → identity.entity.ts
   - email, passwordHash, provider, isVerified
   - accountType: GYM_USER | PLATFORM_ADMIN
   - platformRole: super_admin | platform_admin | null
 
-Member (members table)
+Member (members table)                 → member.entity.ts
   - clientId, identityId → links to gym + identity
   - firstName, lastName, membershipType, loyaltyPoints, status
+  - membershipExpiresAt, membershipStartedAt
 
-Staff (staff table)
+Staff (staff table)                    → staff.entity.ts
   - clientId, identityId → links to gym + identity
   - firstName, lastName, title, status
 ```
 
 ### Role-Based Access Control (RBAC)
-
-Two levels of RBAC:
 
 **Platform level** (checked by PlatformRoleGuard):
 | Role | Access |
@@ -116,64 +114,63 @@ Two levels of RBAC:
 | `super_admin` | Full access to /admin/* endpoints |
 | `platform_admin` | Read access to platform data |
 
-**Gym level** (checked by GymRoleGuard — enforcement in progress):
-| Role | Intended Access |
+**Gym level** (checked by GymRoleGuard):
+| Role | Access |
 |------|----------------|
 | `gym_owner` | Full gym management: staff, members, settings, features |
 | `gym_admin` | Same as owner except cannot delete gym or change plan |
 | `front_desk` | Check-in members, view member list (read-only) |
 | `member` | Self check-in, view own history, own profile |
 
-**Current state:** Gym-level role guards exist but are not yet applied to all endpoints. Any valid JWT with correct x-gym-slug can currently hit any gym-scoped endpoint. RBAC enforcement is planned for Phase 1.4.
-
 ---
 
 ## Check-in System
 
-Three check-in scenarios are supported:
-
-### 1. Member scans gym QR code (qr_self_scan)
-The gym prints a static QR poster. The QR encodes: `{ "type": "gym_checkin", "slug": "ironforge-gym" }`. The member opens the mobile app, scans the poster, the app reads the slug and calls `POST /checkins` with `method: qr_self_scan` using the member's own JWT. The identity resolves to their member record automatically.
-
-### 2. Staff scans member QR code (qr_staff_scan)
-Each member has a personal 30-day QR token (JWT). The member shows their QR on the mobile app. Staff scans it at the front desk. The scan sends `POST /checkins` with `method: qr_staff_scan, qrToken: <member JWT>`. The token is validated and the member is checked in.
-
-### 3. Manual check-in (manual)
-Staff looks up a member by name or member number and selects them. Sends `POST /checkins` with `method: manual, memberId: <uuid>`. Used when a member has no phone or QR issues.
+Three check-in scenarios:
+- `manual` — staff looks up member by name/number, sends `POST /checkins { memberId, method: 'manual' }`
+- `qr_staff_scan` — staff scans member QR, sends `POST /checkins { qrToken, method: 'qr_staff_scan' }`
+- `qr_self_scan` — member scans gym QR, sends `POST /checkins { method: 'qr_self_scan' }` with their own JWT
 
 ### Check-in Behavior System
-
 After a check-in is recorded, a registry of behaviors runs:
 - `BaseAttendanceBehavior` — always runs, logs attendance
-- `LoyaltyPointsBehavior` — runs if `checkin.loyalty_points` feature enabled, awards points
-- `WelcomeMessageBehavior` — runs if `checkin.welcome_message` feature enabled, returns personalized message
+- `LoyaltyPointsBehavior` — runs if `checkin.loyalty_points` feature enabled
+- `WelcomeMessageBehavior` — runs if `checkin.welcome_message` feature enabled
 
-Adding a new behavior = new class implementing `ICheckInBehavior` + one line in the module. No changes to the service. Outcomes are stored in `check_ins.metadata` as `{ outcomes: CheckInOutcome[] }` and returned in the API response.
-
-Auto-checkout runs every hour via cron job — closes any check-in open for more than 4 hours.
+Adding a new behavior = new class implementing `ICheckInBehavior` + one line in the module. Outcomes stored in `check_ins.metadata`.
 
 ---
 
 ## Feature System
 
-Every gym has a set of feature flags backed by three tables:
-
+Every gym has feature flags backed by three tables:
 ```
-feature_definitions   — master list of all features (key, defaultConfig, defaultEnabled)
-client_features       — per-gym on/off toggle
-client_feature_overrides — per-gym JSONB config override
+feature_definitions        → feature-definition.entity.ts
+client_features            → client-feature.entity.ts
+client_feature_overrides   → client-feature-override.entity.ts
 ```
 
-At runtime: `deepMerge(featureDefinition.defaultConfig, clientOverride.config)` produces the effective config. `deepMerge` lives in `@gym-saas/shared-utils`.
+At runtime: `deepMerge(featureDefinition.defaultConfig, clientOverride.config)` produces the effective config.
 
-Feature keys live in `libs/shared-config/src/feature.keys.ts`. Always use those constants, never hardcode strings.
+Feature keys live in `libs/shared-config/src/feature.keys.ts`. **Always use those constants, never hardcode strings.**
 
-Current feature keys:
-- `checkin.basic` — gate for the entire check-in system
-- `checkin.loyalty_points` — points per check-in
-- `checkin.welcome_message` — personalized message on check-in
-- `checkin.active_members_board` — real-time board of who is currently in the gym
-- `member_self_registration` — allows members to register without an invite
+`FeatureResolverService` (in CheckInsModule, exported) caches resolved feature maps per clientId for 60 seconds. Call `featureResolver.invalidate(clientId)` after any feature update.
+
+---
+
+## API Response Format
+
+All successful responses are wrapped by `ResponseInterceptor`:
+```json
+{ "data": <payload>, "meta": { "timestamp": "...", "path": "..." } }
+```
+
+All errors are formatted by `HttpExceptionFilter`:
+```json
+{ "error": { "statusCode": 400, "message": "...", "timestamp": "...", "path": "..." } }
+```
+
+The web/mobile Axios client auto-unwraps the envelope — `response.data` always contains the raw payload.
 
 ---
 
@@ -182,14 +179,14 @@ Current feature keys:
 - Every query on tenant data MUST filter by `clientId`
 - NEVER take `clientId` from the request body — always from `req.tenantContext.clientId`
 - Use `@CurrentTenant()` decorator in controllers
-- Tenant is resolved by `TenantContextMiddleware` from the `x-gym-slug` header or subdomain
+- Tenant is resolved by `TenantContextMiddleware` from the `x-gym-slug` header
 - Every tenant table MUST have `client_id UUID NOT NULL` with an index
 
 ---
 
 ## Shared Libraries — Source of Truth
 
-`libs/shared-types` is the single source of truth for all API response shapes, DTOs, and enums.
+`libs/shared-types` is the single source of truth for all API response shapes.
 
 Rules:
 - Adding a new API response shape → define it in `shared-types` FIRST, then import in `apps/api` and `apps/web`/`apps/mobile`
@@ -198,46 +195,72 @@ Rules:
 
 ---
 
-## API Module Structure
+## Entity File Structure
 
-Each domain is one NestJS module:
+**One entity per file.** Each file in `apps/api/src/database/entities/` contains exactly one `@Entity()` class:
+
+| File | Entity | Table |
+|------|--------|-------|
+| `client.entity.ts` | Client | clients |
+| `client-profile.entity.ts` | ClientProfile | client_profiles |
+| `feature-definition.entity.ts` | FeatureDefinition | feature_definitions |
+| `client-feature.entity.ts` | ClientFeature | client_features |
+| `client-feature-override.entity.ts` | ClientFeatureOverride | client_feature_overrides |
+| `identity.entity.ts` | Identity | identities |
+| `member.entity.ts` | Member | members |
+| `staff.entity.ts` | Staff | staff |
+| `role.entity.ts` | Role | roles |
+| `identity-role.entity.ts` | IdentityRole | identity_roles |
+| `checkin.entity.ts` | CheckIn | check_ins |
+| `audit-log.entity.ts` | AuditLog | audit_logs |
+| `invite.entity.ts` | Invite | invites |
+| `member.privacy.settings.entity.ts` | MemberPrivacySettings | member_privacy_settings |
+
+---
+
+## API Module Structure
 
 ```
 apps/api/src/modules/
-├── auth/         Login, refresh, logout, accept-invite, admin-login
+├── auth/         Login, refresh, logout, accept-invite, admin-login, self-register
 ├── admin/        Platform admin: create/list gyms (super_admin only)
 ├── clients/      Gym profile: my-gyms, get by slug, update profile
-├── members/      Member CRUD, privacy settings, gym context
-└── checkins/     Check-in/out, QR generation, active board, history
+├── members/      Member CRUD, privacy settings, gym context, membership scheduler
+├── staff/        Staff CRUD with invite flow
+├── checkins/     Check-in/out, QR, active board, history, behavior pipeline
+├── features/     Toggle and configure per-gym feature flags
+└── email/        Transactional email service (global module)
 ```
 
-Planned modules:
-- `staff/` — staff CRUD with invite flow
-- `features/` — toggle and configure per-gym features (Phase 1.4)
-- `email/` — transactional email service (Phase 1.4)
+Planned:
 - `chat/` — gym-wide messaging (Phase 1.5, DB tables exist)
 
 ---
 
 ## Current Build Status
 
-### Done
-- Database schema (8 migrations applied)
+### Done (Phase 1.1 – 1.4)
+- Database schema (9 migrations applied, including membership expiry)
 - Shared types, utils, config libraries
-- Monorepo scaffold (Nx + pnpm)
-- Auth module: login, refresh, logout, accept-invite, admin-login
+- Auth module: login, refresh, logout, accept-invite, admin-login, self-register
 - Admin module: gym creation (transactional), gym list
 - Clients module: my-gyms, profile update
-- Members module: CRUD, privacy settings, gym context
-- Check-ins module: all 3 check-in methods, checkout, QR generation, active board, history, auto-checkout cron
+- Members module: CRUD, privacy settings, gym context, membership expiry enforcement
+- Staff module: CRUD with invite flow
+- Check-ins module: all 3 methods, checkout, QR, active board, history, auto-checkout cron, behavior pipeline
+- Features module: GET /features, PATCH /features/:key with cache invalidation
+- Email module: gym owner activation, staff invitation, member welcome, membership expiry reminders
+- Membership expiry: blocked at login, at check-in, and via GymRoleGuard for all gym-scoped endpoints
+- Entity refactor: one entity per file
+- HttpExceptionFilter: consistent error envelope
+- ResponseInterceptor: consistent success envelope `{ data, meta }`
 
-### In Progress / Planned
+### Planned
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1.4 | Email service + RBAC enforcement + Staff endpoints | Next |
-| 1.5 | Feature override management (GET/PATCH /features) | Planned |
-| 1.6 | Web dashboard (Next.js): login, gym setup, members, check-ins | Planned |
+| 1.5 | Unit tests for critical services (AuthService, GymRoleGuard, CheckInsService) | Next |
+| 1.6 | Web dashboard (Next.js): login, gym setup, members, check-ins, staff | Next |
 | 1.7 | Community chat (DB exists, service not built) | Planned |
 | 1.8 | Mobile app: login, QR scanner, check-in history, profile | Planned |
 
@@ -251,6 +274,12 @@ Planned modules:
 - DTOs in each module's `dto/` folder with class-validator decorators
 - One module per domain — no cross-module service injection unless exported
 - Use `@CurrentTenant()` for tenant context, `@CurrentUser()` for JWT payload
+- Guards only make access decisions — no business logic or DB queries inside guards
+
+### Entities
+- **One entity class per file** — never put multiple `@Entity()` classes in one file
+- Entity file naming: `<table-name-singular>.entity.ts`
+- Export type aliases (`MemberStatus`, `StaffStatus`) from the same file as the entity that uses them
 
 ### Database
 - Never use TypeORM `synchronize: true`
@@ -258,6 +287,7 @@ Planned modules:
 - All migration SQL must be idempotent (`IF NOT EXISTS` everywhere)
 - Run `pnpm migrate:up` twice to verify idempotency
 - Migration filename format: `YYYYMMDDNNNNNn_description.sql`
+- Use TypeORM query builder — avoid `dataSource.query()` raw SQL in services and guards
 
 ### TypeScript
 - All service methods have explicit return types
@@ -272,6 +302,64 @@ Planned modules:
 
 ---
 
+## Testing Standards
+
+### Philosophy
+- **Unit tests** — services with mocked repositories (Jest + `@nestjs/testing`)
+- **Integration tests** — controllers via NestJS TestingModule with real service, mocked DB
+- Test file location: `<filename>.spec.ts` in the same directory as the file under test
+
+### Priority order (highest value first)
+1. `GymRoleGuard` — 100% branch coverage (security-critical)
+2. `AuthService` — login, expiry check, token generation
+3. `CheckInsService` — all 3 check-in methods, behavior pipeline
+4. `MembersService` — create (expiry field handling), update
+5. `FeatureResolverService` — cache logic, merge logic
+
+### Pattern for service unit tests
+```typescript
+describe('MembersService', () => {
+  let service: MembersService;
+  let memberRepo: jest.Mocked<Repository<Member>>;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        MembersService,
+        { provide: getRepositoryToken(Member), useValue: createMockRepo() },
+        // ... other mocked deps
+      ],
+    }).compile();
+
+    service = module.get(MembersService);
+    memberRepo = module.get(getRepositoryToken(Member));
+  });
+
+  it('should throw ForbiddenException when member is expired', async () => { ... });
+});
+```
+
+### Coverage targets
+- Services: ≥ 70% line coverage, ≥ 80% branch coverage
+- Guards: 100% branch coverage
+- Run tests: `pnpm test` (unit), coverage: `pnpm test --coverage`
+
+---
+
+## Documentation
+
+When making significant changes, update the appropriate doc:
+
+| What changed | Where to document |
+|---|---|
+| New API endpoint | `.claude/CLAUDE.md` endpoint inventory |
+| New entity or table | `CLAUDE.md` entity table + `docs/Architecture.md` |
+| Breaking API change | `docs/revision/YYYY-MM-DD_<description>.md` |
+| Architecture decision | `docs/Architecture.md` + ADR section |
+| Session progress | `docs/progress/YYYY-MM-DD_Progress.md` |
+
+---
+
 ## Running the Project
 
 ```bash
@@ -282,6 +370,7 @@ pnpm seed:admin         # Insert platform admin account (run once)
 pnpm api                # Start API dev server (port 3000)
 pnpm web                # Start web dev server (port 3001)
 pnpm mobile             # Start Expo
+pnpm test               # Run unit tests
 ```
 
 ---
@@ -291,11 +380,13 @@ pnpm mobile             # Start Expo
 - Modify existing migration files — create new ones
 - Use `synchronize: true` in TypeORM
 - Take `client_id` from request body
-- Add business logic to controllers
-- Use `Repository.query()` raw SQL inside services (use query builder)
+- Add business logic to controllers or guards
+- Put multiple `@Entity()` classes in one file
+- Use `dataSource.query()` raw SQL in services or guards (use query builder)
 - Expose `passwordHash` in any response
 - Hardcode role UUIDs — always query roles by name
 - Duplicate types that exist in `shared-types`
 - Use `localStorage` or `AsyncStorage` for tokens in the web/mobile apps
 - Add a public registration endpoint (all accounts come from invites)
 - Import circularly between modules
+- Skip writing `.spec.ts` files for new services

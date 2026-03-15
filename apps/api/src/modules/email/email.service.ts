@@ -59,6 +59,20 @@ export class EmailService {
     });
   }
 
+  async sendMembershipExpiryReminder(params: {
+    to: string;
+    memberName: string;
+    gymName: string;
+    daysLeft: number;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.send({
+      to: params.to,
+      subject: `Your membership at ${params.gymName} expires in ${params.daysLeft} day${params.daysLeft === 1 ? '' : 's'}`,
+      html: this.membershipExpiryTemplate(params.memberName, params.gymName, params.daysLeft, params.expiresAt),
+    });
+  }
+
   private async send(opts: { to: string; subject: string; html: string }): Promise<void> {
     if (!this.resend) {
       this.logger.warn(`[EMAIL SKIPPED — no RESEND_API_KEY] To: ${opts.to} | Subject: ${opts.subject}`);
@@ -99,6 +113,16 @@ export class EmailService {
       <p>Click below to activate your account and access the member app.</p>
       <p><a href="${url}" style="background:#000;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;">Activate Account</a></p>
       <p>This link expires in 72 hours.</p>
+    `;
+  }
+
+  private membershipExpiryTemplate(name: string, gymName: string, daysLeft: number, expiresAt: Date): string {
+    const dateStr = expiresAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    return `
+      <p>Hi ${name},</p>
+      <p>Your membership at <strong>${gymName}</strong> expires in <strong>${daysLeft} day${daysLeft === 1 ? '' : 's'}</strong> on ${dateStr}.</p>
+      <p>Please contact your gym to renew your membership and keep access to all features.</p>
+      <p>If you've already renewed, you can ignore this message.</p>
     `;
   }
 }

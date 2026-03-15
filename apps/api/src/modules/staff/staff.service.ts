@@ -6,8 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Staff, Identity } from '../../database/entities/member.entity';
-import { IdentityRole, Role } from '../../database/entities/role.entity';
+import { Staff } from '../../database/entities/staff.entity';
+import { Identity } from '../../database/entities/identity.entity';
+import { Client } from '../../database/entities/client.entity';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
+import { Role } from '../../database/entities/role.entity';
 import { InviteService } from '../auth/invite.service';
 import { EmailService } from '../email/email.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -22,6 +25,8 @@ export class StaffService {
     private readonly staffRepo: Repository<Staff>,
     @InjectRepository(Identity)
     private readonly identityRepo: Repository<Identity>,
+    @InjectRepository(Client)
+    private readonly clientRepo: Repository<Client>,
     @InjectRepository(IdentityRole)
     private readonly identityRoleRepo: Repository<IdentityRole>,
     @InjectRepository(Role)
@@ -76,12 +81,8 @@ export class StaffService {
       invitedBy: invitedByIdentityId,
     });
 
-    // Load gym name for email — use a raw query to avoid importing ClientRepo
-    const gymRows = await this.staffRepo.query(
-      'SELECT name FROM clients WHERE id = $1',
-      [clientId],
-    );
-    const gymName = (gymRows[0]?.name as string) ?? 'the gym';
+    const gym = await this.clientRepo.findOne({ where: { id: clientId }, select: ['id', 'name'] });
+    const gymName = gym?.name ?? 'the gym';
 
     try {
       await this.emailService.sendStaffInvitation({

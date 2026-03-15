@@ -69,6 +69,20 @@ export class GymRoleGuard implements CanActivate {
       throw new ForbiddenException();
     }
 
+    // Member-only users: block all gym-scoped actions when membership has expired
+    const isMemberOnly = roleNames.length > 0 && roleNames.every((r) => r === 'member');
+    if (isMemberOnly) {
+      const expRows: Array<{ membership_expires_at: Date | null }> = await this.dataSource.query(
+        `SELECT membership_expires_at FROM members
+         WHERE identity_id = $1 AND client_id = $2 LIMIT 1`,
+        [req.user.sub, tenantContext.clientId],
+      );
+      const expiresAt = expRows[0]?.membership_expires_at;
+      if (expiresAt && new Date(expiresAt) < new Date()) {
+        throw new ForbiddenException('Membership has expired. Please renew to continue.');
+      }
+    }
+
     return true;
   }
 }

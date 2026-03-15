@@ -1,17 +1,20 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Member, Identity } from '../../database/entities/member.entity';
+import { Member } from '../../database/entities/member.entity';
+import { Identity } from '../../database/entities/identity.entity';
 import { MemberPrivacySettings } from '../../database/entities/member.privacy.settings.entity';
 import { Client } from '../../database/entities/client.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
-import { IdentityRole, Role } from '../../database/entities/role.entity';
+import { ClientFeatureOverride } from '../../database/entities/client-feature-override.entity';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
+import { Role } from '../../database/entities/role.entity';
 import { InviteService } from '../auth/invite.service';
 import { EmailService } from '../email/email.service';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdatePrivacySettingsDto } from './dto/privacy-settings.dto';
-import { formatMemberNumber } from '@gym-saas/shared-utils';
+import { formatMemberNumber, deepMerge } from '@gym-saas/shared-utils';
 
 @Injectable()
 export class MembersService {
@@ -28,6 +31,8 @@ export class MembersService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(ClientFeature)
     private readonly clientFeatureRepo: Repository<ClientFeature>,
+    @InjectRepository(ClientFeatureOverride)
+    private readonly featureOverrideRepo: Repository<ClientFeatureOverride>,
     @InjectRepository(IdentityRole)
     private readonly identityRoleRepo: Repository<IdentityRole>,
     @InjectRepository(Role)
@@ -70,6 +75,8 @@ export class MembersService {
         membershipType: dto.membershipType ?? null,
         status: 'active',
         joinedAt: new Date(),
+        membershipExpiresAt: new Date(dto.membershipExpiresAt),
+        membershipStartedAt: dto.membershipStartedAt ? new Date(dto.membershipStartedAt) : new Date(),
       }),
     );
 
@@ -181,12 +188,16 @@ export class MembersService {
       .where('cf.client_id = :clientId', { clientId })
       .getMany();
 
+    const overrides = await this.featureOverrideRepo.find({ where: { clientId } });
+    const overrideByFeatureId = new Map(overrides.map((o) => [o.featureId, o.config]));
+
     const resolvedFeatures = clientFeatures.reduce<
       Record<string, { isEnabled: boolean; config: Record<string, unknown> }>
     >((acc, cf) => {
+      const overrideConfig = overrideByFeatureId.get(cf.featureId) ?? {};
       acc[cf.featureDefinition.key] = {
         isEnabled: cf.isEnabled,
-        config: cf.featureDefinition.defaultConfig,
+        config: deepMerge(cf.featureDefinition.defaultConfig, overrideConfig),
       };
       return acc;
     }, {});

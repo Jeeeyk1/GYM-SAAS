@@ -1,38 +1,41 @@
 {
-  "name": "@gym-saas/web",
-  "version": "0.0.1",
-  "private": true,
-  "scripts": {
-    "serve": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "test": "jest",
-    "typecheck": "tsc --noEmit"
+  "compilerOptions": {
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "target": "ES6",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
   },
-  "dependencies": {
-    "@tanstack/react-query": "^5.0.0",
-    "axios": "^1.6.0",
-    "next": "^14.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-hook-form": "^7.0.0",
-    "zod": "^3.22.0",
-    "@hookform/resolvers": "^3.3.0",
-    "clsx": "^2.0.0",
-    "tailwind-merge": "^2.0.0",
-    "lucide-react": "^0.263.1"
-  },
-  "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0",
-    "tailwindcss": "^3.4.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/jest-dom": "^6.0.0",
-    "@types/jest": "^29.5.2",
-    "jest": "^29.5.0",
-    "jest-environment-jsdom": "^29.5.0",
-    "ts-jest": "^29.1.0"
-  }
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

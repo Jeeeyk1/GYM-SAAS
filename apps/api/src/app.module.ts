@@ -13,6 +13,7 @@ import { MembersModule } from './modules/members/members.module';
 import { CheckInsModule } from './modules/checkins/checkins.module';
 import { EmailModule } from './modules/email/email.module';
 import { StaffModule } from './modules/staff/staff.module';
+import { FeaturesModule } from './modules/features/features.module';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 
 @Module({
@@ -42,6 +43,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     MembersModule,
     CheckInsModule,
     StaffModule,
+    FeaturesModule,
   ],
 })
 export class AppModule implements NestModule {

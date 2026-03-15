@@ -10,6 +10,8 @@ export interface MemberResponse {
   loyaltyPoints: number;
   joinedAt: string;
   email: string;
+  membershipExpiresAt?: string | null;
+  membershipStartedAt?: string | null;
 }
 
 export interface CreateMemberRequest {
@@ -18,6 +20,8 @@ export interface CreateMemberRequest {
   email: string;
   phone?: string;
   membershipType: string;
+  membershipExpiresAt: string;
+  membershipStartedAt?: string;
 }
 
 export interface UpdateMemberRequest {
@@ -25,6 +29,8 @@ export interface UpdateMemberRequest {
   lastName?: string;
   membershipType?: string;
   status?: MemberStatus;
+  membershipExpiresAt?: string;
+  membershipStartedAt?: string;
 }
 
 export interface MemberQrPayload {

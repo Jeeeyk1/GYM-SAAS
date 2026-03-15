@@ -3,10 +3,14 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { Client } from '../../database/entities/client.entity';
-import { ClientFeature, ClientProfile, FeatureDefinition } from '../../database/entities/client-feature.entity';
-import { Identity, Staff } from '../../database/entities/member.entity';
+import { ClientFeature } from '../../database/entities/client-feature.entity';
+import { ClientProfile } from '../../database/entities/client-profile.entity';
+import { FeatureDefinition } from '../../database/entities/feature-definition.entity';
+import { Identity } from '../../database/entities/identity.entity';
+import { Staff } from '../../database/entities/staff.entity';
 import { Invite } from '../../database/entities/invite.entity';
-import { IdentityRole, Role } from '../../database/entities/role.entity';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
+import { Role } from '../../database/entities/role.entity';
 import { EmailService } from '../email/email.service';
 import { CreateGymDto } from './dto/create-gym.dto';
 

@@ -3,8 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
 import { Client } from '../../database/entities/client.entity';
-import { ClientFeature, ClientProfile } from '../../database/entities/client-feature.entity';
-import { IdentityRole } from '../../database/entities/role.entity';
+import { ClientFeature } from '../../database/entities/client-feature.entity';
+import { ClientProfile } from '../../database/entities/client-profile.entity';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Client, ClientProfile, ClientFeature, IdentityRole])],

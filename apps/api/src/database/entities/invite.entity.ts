@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Client } from './client.entity';
-import { Identity } from './member.entity';
+import { Identity } from './identity.entity';
 
 export type InviteStatus = 'pending' | 'accepted' | 'expired';
 export type InviteType = 'owner' | 'staff' | 'member';

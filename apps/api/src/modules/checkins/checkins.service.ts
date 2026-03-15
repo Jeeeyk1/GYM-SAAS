@@ -77,6 +77,11 @@ export class CheckInsService {
       throw new NotFoundException('Member not found');
     }
 
+    // ── 2b. Membership expiry check ───────────────────────────────────────────
+    if (member.membershipExpiresAt && member.membershipExpiresAt < new Date()) {
+      throw new ForbiddenException('Membership has expired. Please renew to continue.');
+    }
+
     // ── 3. Duplicate check ────────────────────────────────────────────────────
     const duplicateWindowMinutes =
       (features.get('checkin.basic')?.config?.['duplicate_window_minutes'] as number | undefined) ?? 60;
