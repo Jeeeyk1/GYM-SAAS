@@ -46,15 +46,15 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
-    // if (!token) {
-    //   router.push('/admin/login')
-    //   return
-    // }
+    if (!token) {
+      router.push('/admin/login')
+      return
+    }
 
-    // if (user?.role !== 'admin') {
-    //   router.push('/gym/dashboard')
-    //   return
-    // }
+    if (user?.role !== 'admin') {
+      router.push('/gym/dashboard')
+      return
+    }
 
     // Simulate loading gyms
     setIsLoading(false)
@@ -217,11 +217,10 @@ export default function AdminDashboard() {
                       <TableCell>{gym.staffCount}</TableCell>
                       <TableCell>
                         <span
-                          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize ${
-                            gym.status === 'active'
+                          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize ${gym.status === 'active'
                               ? 'bg-chart-2/15 text-chart-2'
                               : 'bg-muted text-foreground/60'
-                          }`}
+                            }`}
                         >
                           {gym.status}
                         </span>
