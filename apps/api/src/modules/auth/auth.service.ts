@@ -9,8 +9,14 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { AccountType, PlatformRole } from '@gym-saas/shared-types';
-import { Identity, Member } from '../../database/entities/member.entity';
-import { ClientFeature, FeatureDefinition } from '../../database/entities/client-feature.entity';
+import { Member } from '../../database/entities/member.entity';
+import { Identity } from '../../database/entities/identity.entity';
+import { Staff } from '../../database/entities/staff.entity';
+import { Client } from '../../database/entities/client.entity';
+import { ClientFeature } from '../../database/entities/client-feature.entity';
+import { FeatureDefinition } from '../../database/entities/feature-definition.entity';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
+import { Role } from '../../database/entities/role.entity';
 import { LoginDto, AcceptInviteDto, SelfRegisterDto, AdminLoginDto } from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { JwtRefreshPayload } from './strategies/jwt-refresh.strategy';
@@ -25,16 +31,24 @@ export class AuthService {
     private readonly identityRepo: Repository<Identity>,
     @InjectRepository(Member)
     private readonly memberRepo: Repository<Member>,
+    @InjectRepository(Staff)
+    private readonly staffRepo: Repository<Staff>,
+    @InjectRepository(Client)
+    private readonly clientRepo: Repository<Client>,
     @InjectRepository(ClientFeature)
     private readonly clientFeatureRepo: Repository<ClientFeature>,
     @InjectRepository(FeatureDefinition)
     private readonly featureDefRepo: Repository<FeatureDefinition>,
+    @InjectRepository(Role)
+    private readonly roleRepo: Repository<Role>,
+    @InjectRepository(IdentityRole)
+    private readonly identityRoleRepo: Repository<IdentityRole>,
     private readonly inviteService: InviteService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {}
 
-  async login(dto: LoginDto): Promise<TokenPair> {
+  async login(dto: LoginDto, clientId?: string): Promise<TokenPair> {
     const identity = await this.identityRepo
       .createQueryBuilder('i')
       .addSelect('i.password_hash')
@@ -51,6 +65,24 @@ export class AuthService {
     // Platform admin accounts must use /auth/admin/login
     if (identity.accountType === AccountType.PLATFORM_ADMIN) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // If logging in under a specific gym context, block expired members
+    if (clientId) {
+      const member = await this.memberRepo.findOne({
+        where: { identityId: identity.id, clientId },
+      });
+      if (member?.membershipExpiresAt && member.membershipExpiresAt < new Date()) {
+        // Staff at this gym bypass the expiry check (front_desk staff may also be a member)
+        const staffRole = await this.identityRoleRepo.findOne({
+          where: { identityId: identity.id, clientId },
+          relations: ['role'],
+        });
+        const isStaff = staffRole && ['gym_owner', 'gym_admin', 'front_desk'].includes(staffRole.role.name);
+        if (!isStaff) {
+          throw new UnauthorizedException('Membership has expired. Please renew to continue.');
+        }
+      }
     }
 
     await this.identityRepo.update(identity.id, { lastLoginAt: new Date() });
@@ -78,7 +110,7 @@ export class AuthService {
     return this.issueTokens(identity);
   }
 
-  async acceptInvite(dto: AcceptInviteDto): Promise<TokenPair> {
+  async acceptInvite(dto: AcceptInviteDto): Promise<TokenPair & { gymSlug: string }> {
     const invite = await this.inviteService.validate(dto.token);
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -89,8 +121,21 @@ export class AuthService {
 
     await this.inviteService.accept(dto.token);
 
+    // Transition the gym to active when the owner completes onboarding
+    if (invite.type === 'owner') {
+      await this.clientRepo.update({ id: invite.clientId }, { status: 'active' });
+    }
+
+    // Mark the staff record active for owner and staff invite types
+    if (invite.type === 'owner' || invite.type === 'staff') {
+      await this.staffRepo.update(
+        { identityId: invite.identityId, clientId: invite.clientId },
+        { status: 'active' },
+      );
+    }
+
     // Invites are always for gym users — platform admins are seeded, not invited
-    return this.issueTokens(invite.identity);
+    return { ...this.issueTokens(invite.identity), gymSlug: invite.client.slug };
   }
 
   async selfRegister(
@@ -141,6 +186,19 @@ export class AuthService {
       joinedAt: new Date(),
     });
     await this.memberRepo.save(member);
+
+    // Assign member role so GymRoleGuard recognises self-registered members
+    const memberRole = await this.roleRepo.findOne({ where: { name: 'member', clientId } });
+    if (memberRole) {
+      await this.identityRoleRepo.save(
+        this.identityRoleRepo.create({
+          identityId: identity.id,
+          roleId: memberRole.id,
+          clientId,
+          assignedBy: null,
+        }),
+      );
+    }
 
     return this.issueTokens(identity);
   }

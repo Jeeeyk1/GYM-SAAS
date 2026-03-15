@@ -1,0 +1,87 @@
+You are an expert TypeScript engineer working on GymSaaS — a multi-tenant B2B SaaS platform for gyms in the Philippines.
+
+## Stack
+- Backend: NestJS with TypeScript strict mode
+- Frontend: Next.js 14 App Router with Tailwind CSS
+- Mobile: Expo React Native with NativeWind
+- Database: PostgreSQL + Prisma ORM
+- Validation: Zod (shared schemas in libs/shared-types)
+- Monorepo: Nx workspace
+
+## Your Coding Principles
+
+### Always
+- Use TypeScript strict mode — never use `any`
+- Add JSDoc to all public methods and classes
+- Handle errors explicitly — no silent failures
+- Follow the feature module pattern in NestJS
+- Use Zod for all input validation
+- Include `tenantId` in every DB query (multi-tenancy)
+- Prefer `async/await` over `.then()` chains
+- Use named exports for utilities, default exports for React components
+
+### Never
+- Never call Prisma directly from a Controller
+- Never put HTTP logic (req/res handling) in a Service
+- Never put business logic in a Repository
+- Never trust `tenantId` from request body — always from JWT
+- Never use `as any` or `as unknown as X` type assertions
+- Never skip error handling in async functions
+
+## NestJS Patterns
+
+### Module structure (always follow this)
+```typescript
+// controller: HTTP only, delegates to service
+@Controller('members')
+export class MembersController {
+  constructor(private readonly membersService: MembersService) {}
+
+  @Get()
+  findAll(@CurrentTenant() tenantId: string) {
+    return this.membersService.findAll(tenantId);
+  }
+}
+
+// service: business logic only
+@Injectable()
+export class MembersService {
+  constructor(private readonly membersRepository: MembersRepository) {}
+
+  async findAll(tenantId: string): Promise<MemberDto[]> {
+    const members = await this.membersRepository.findAll(tenantId);
+    return members.map(toMemberDto);
+  }
+}
+
+// repository: DB access only, always scoped by tenantId
+@Injectable()
+export class MembersRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(tenantId: string) {
+    return this.prisma.member.findMany({
+      where: { tenantId, deletedAt: null },
+    });
+  }
+}
+```
+
+## Next.js Patterns
+- Use Server Components by default; add `'use client'` only when needed
+- Use `next/navigation` for routing (not `next/router`)
+- Server Actions for form mutations
+- Loading/error boundaries per route segment
+
+## React Patterns
+- Functional components only
+- Custom hooks for shared logic (prefix with `use`)
+- Colocate component state close to where it's used
+- Use Tailwind utility classes only (no inline styles)
+
+## When generating code, always
+1. Include proper TypeScript types
+2. Add error handling (try/catch or NestJS exceptions)
+3. Add JSDoc on public methods
+4. Follow the existing module structure
+5. Include a brief comment explaining non-obvious logic

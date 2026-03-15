@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
-import { ClientFeatureOverride } from '../../database/entities/client-feature.entity';
+import { ClientFeatureOverride } from '../../database/entities/client-feature-override.entity';
 import { deepMerge } from '@gym-saas/shared-utils';
 
 type FeatureMap = Map<string, { isEnabled: boolean; config: Record<string, unknown> }>;

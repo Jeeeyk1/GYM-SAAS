@@ -21,8 +21,12 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const { accessToken, refreshToken } = await this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @CurrentTenant() tenant: TenantContext | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken } = await this.authService.login(dto, tenant?.clientId);
     res.cookie('refresh_token', refreshToken, REFRESH_COOKIE);
     return { accessToken };
   }
@@ -38,9 +42,9 @@ export class AuthController {
   @Post('accept-invite')
   @HttpCode(HttpStatus.OK)
   async acceptInvite(@Body() dto: AcceptInviteDto, @Res({ passthrough: true }) res: Response) {
-    const { accessToken, refreshToken } = await this.authService.acceptInvite(dto);
+    const { accessToken, refreshToken, gymSlug } = await this.authService.acceptInvite(dto);
     res.cookie('refresh_token', refreshToken, REFRESH_COOKIE);
-    return { accessToken };
+    return { accessToken, gymSlug };
   }
 
   @Post('register/:gymSlug')

@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class CreateMemberDto {
   @IsString()
@@ -17,4 +17,11 @@ export class CreateMemberDto {
   @IsOptional()
   @IsString()
   membershipType?: string;
+
+  @IsDateString()
+  membershipExpiresAt: string;
+
+  @IsOptional()
+  @IsDateString()
+  membershipStartedAt?: string;
 }

@@ -1,0 +1,712 @@
+{
+  "info": {
+    "_postman_id": "gymsaas-full-test-suite",
+    "name": "GymSaaS — Full Test Suite",
+    "description": "End-to-end test flow. Run requests in numbered order — test scripts auto-capture tokens and IDs into collection variables.\n\nFlow:\n  1. Platform admin login\n  2. Create gym → get owner invite token\n  3. Accept owner invite → get owner JWT\n  4. Create member → get member invite token\n  5. Accept member invite → get member JWT\n  6. Get member QR token\n  7. Manual check-in → check-out\n  8. QR staff-scan check-in → check-out\n  9. QR self-scan check-in (as member)\n  10. History + active members\n\nPrerequisites:\n  - API running on localhost:3000\n  - Migrations applied (pnpm migrate:up)\n  - Seed run (pnpm seed)\n  - Platform admin inserted (docs/seed-admin.sql)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",            "value": "http://localhost:3000/api/v1", "type": "string" },
+    { "key": "adminToken",         "value": "", "type": "string" },
+    { "key": "ownerToken",         "value": "", "type": "string" },
+    { "key": "memberToken",        "value": "", "type": "string" },
+    { "key": "gymSlug",            "value": "ironforge-gym",              "type": "string" },
+    { "key": "clientId",           "value": "", "type": "string" },
+    { "key": "memberId",           "value": "", "type": "string" },
+    { "key": "checkInId",          "value": "", "type": "string" },
+    { "key": "memberQrToken",      "value": "", "type": "string" },
+    { "key": "ownerInviteToken",   "value": "", "type": "string" },
+    { "key": "memberInviteToken",  "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1 — Platform Admin",
+      "item": [
+        {
+          "name": "01. Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has accessToken', () => pm.expect(res.accessToken).to.be.a('string'));",
+                  "pm.collectionVariables.set('adminToken', res.accessToken);",
+                  "console.log('✅ adminToken saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@gymsaas.dev\",\n  \"password\": \"Admin@2026!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/admin/login",
+            "description": "Login as platform admin. Uses /auth/admin/login (not /auth/login). Requires PLATFORM_ADMIN account type."
+          }
+        },
+        {
+          "name": "02. List All Gyms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "console.log('Total gyms:', pm.response.json().length);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/gyms"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 — Gym Setup",
+      "item": [
+        {
+          "name": "03. Create Gym",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has client.id', () => pm.expect(res.client.id).to.be.a('string'));",
+                  "pm.test('Has inviteToken', () => pm.expect(res.inviteToken).to.be.a('string'));",
+                  "pm.collectionVariables.set('clientId', res.client.id);",
+                  "pm.collectionVariables.set('gymSlug', res.client.slug);",
+                  "pm.collectionVariables.set('ownerInviteToken', res.inviteToken);",
+                  "console.log('✅ Gym created. slug:', res.client.slug);",
+                  "console.log('✅ ownerInviteToken:', res.inviteToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"ironforge-gym\",\n  \"name\": \"IronForge Gym\",\n  \"ownerEmail\": \"owner@ironforge.com\",\n  \"plan\": \"starter\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/admin/gyms",
+            "description": "Creates gym + owner staff record + all feature flags. Returns inviteToken for the owner to set their password."
+          }
+        },
+        {
+          "name": "04. Accept Owner Invite (set password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Has accessToken', () => pm.expect(res.accessToken).to.be.a('string'));",
+                  "pm.collectionVariables.set('ownerToken', res.accessToken);",
+                  "console.log('✅ ownerToken saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{ownerInviteToken}}\",\n  \"password\": \"Owner@2026!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/accept-invite",
+            "description": "Owner sets their password using the invite token from step 03. Returns a JWT — owner is now logged in."
+          }
+        },
+        {
+          "name": "05. Get My Gyms (owner verification)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Owner has 1+ gym', () => pm.expect(pm.response.json().length).to.be.above(0));",
+                  "console.log('Owner gyms:', pm.response.json().map(g => g.slug));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" }
+            ],
+            "url": "{{baseUrl}}/clients/my-gyms",
+            "description": "Verify owner can see their gym."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 — Members",
+      "item": [
+        {
+          "name": "06. Create Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has member.id', () => pm.expect(res.member.id).to.be.a('string'));",
+                  "pm.test('Has inviteToken', () => pm.expect(res.inviteToken).to.be.a('string'));",
+                  "pm.collectionVariables.set('memberId', res.member.id);",
+                  "pm.collectionVariables.set('memberInviteToken', res.inviteToken);",
+                  "console.log('✅ memberId:', res.member.id);",
+                  "console.log('✅ memberInviteToken:', res.inviteToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"membershipType\": \"monthly\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/members",
+            "description": "Creates member + identity + privacy settings + invite. Requires x-gym-slug header."
+          }
+        },
+        {
+          "name": "07. Accept Member Invite (set password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Has accessToken', () => pm.expect(res.accessToken).to.be.a('string'));",
+                  "pm.collectionVariables.set('memberToken', res.accessToken);",
+                  "console.log('✅ memberToken saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{memberInviteToken}}\",\n  \"password\": \"Member@2026!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/accept-invite"
+          }
+        },
+        {
+          "name": "08. List Members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has members', () => pm.expect(pm.response.json().length).to.be.above(0));",
+                  "console.log('Total members:', pm.response.json().length);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": "{{baseUrl}}/members"
+          }
+        },
+        {
+          "name": "09. Get Member QR Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has token', () => pm.expect(res.token).to.be.a('string'));",
+                  "pm.test('Has expiresAt', () => pm.expect(res.expiresAt).to.be.a('string'));",
+                  "pm.collectionVariables.set('memberQrToken', res.token);",
+                  "console.log('✅ memberQrToken saved (first 40 chars):', res.token.substring(0, 40) + '...');",
+                  "console.log('Expires at:', res.expiresAt);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": "{{baseUrl}}/members/{{memberId}}/qr",
+            "description": "Generates (or returns cached) 30-day JWT for the member's QR code. Used for qr_staff_scan check-ins."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 — Check-ins",
+      "item": [
+        {
+          "name": "10. Check In — Manual",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has checkIn.id', () => pm.expect(res.checkIn.id).to.be.a('string'));",
+                  "pm.test('Has outcomes array', () => pm.expect(res.outcomes).to.be.an('array'));",
+                  "pm.test('attendance_logged outcome exists', () => {",
+                  "  const att = res.outcomes.find(o => o.type === 'attendance_logged');",
+                  "  pm.expect(att).to.not.be.undefined;",
+                  "});",
+                  "pm.collectionVariables.set('checkInId', res.checkIn.id);",
+                  "console.log('✅ checkInId:', res.checkIn.id);",
+                  "console.log('Outcomes:', JSON.stringify(res.outcomes, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"manual\",\n  \"memberId\": \"{{memberId}}\",\n  \"station\": \"front-desk\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/checkins",
+            "description": "Staff manually checks in a member by their ID. Runs all enabled behaviors (loyalty points, welcome message, etc.)."
+          }
+        },
+        {
+          "name": "11. Check Out",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('checkedOutAt is set', () => pm.expect(res.checkedOutAt).to.be.a('string'));",
+                  "pm.test('checkoutMethod is manual', () => pm.expect(res.checkoutMethod).to.equal('manual'));",
+                  "console.log('✅ Checked out at:', res.checkedOutAt);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/checkins/{{checkInId}}/checkout",
+            "description": "Closes the open check-in. Sets checkedOutAt = now() and checkoutMethod = 'manual'."
+          }
+        },
+        {
+          "name": "12. Check In — QR Staff Scan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('method is qr_staff_scan', () => pm.expect(res.checkIn.method).to.equal('qr_staff_scan'));",
+                  "pm.collectionVariables.set('checkInId', res.checkIn.id);",
+                  "console.log('✅ QR staff-scan checkInId:', res.checkIn.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"qr_staff_scan\",\n  \"qrToken\": \"{{memberQrToken}}\",\n  \"station\": \"front-desk\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/checkins",
+            "description": "Staff scans member's QR code. Validates JWT token, extracts memberId + clientId, checks them in."
+          }
+        },
+        {
+          "name": "13. Check Out (QR scan session)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('checkedOutAt is set', () => pm.expect(pm.response.json().checkedOutAt).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/checkins/{{checkInId}}/checkout"
+          }
+        },
+        {
+          "name": "14. Check In — QR Self Scan (as Member)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// 201 = new check-in, 409 = already checked in (if prev not checked out)",
+                  "pm.test('Status 201 or 409', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('checkInId', res.checkIn.id);",
+                  "  console.log('✅ Self check-in ID:', res.checkIn.id);",
+                  "} else {",
+                  "  console.log('409: Member already checked in (expected if previous session still open)');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{memberToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"qr_self_scan\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/checkins",
+            "description": "Member checks themselves in using their own JWT (identity → member lookup). No token needed in body."
+          }
+        },
+        {
+          "name": "15. Get Active Members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "console.log('Currently in gym:', pm.response.json().length);",
+                  "console.log(JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": "{{baseUrl}}/checkins/active-members",
+            "description": "Members currently checked in (last 4h, checked_out_at IS NULL). Requires feature 'checkin.active_members_board' enabled."
+          }
+        },
+        {
+          "name": "16. Get Check-in History (member filter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has data array', () => pm.expect(res.data).to.be.an('array'));",
+                  "pm.test('Has total', () => pm.expect(res.total).to.be.a('number'));",
+                  "console.log('Check-ins for member:', res.total);",
+                  "res.data.forEach(ci => console.log(ci.id, '|', ci.method, '|', ci.checkedInAt, '→', ci.checkedOutAt || 'open'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/checkins?memberId={{memberId}}&page=1&limit=20",
+              "query": [
+                { "key": "memberId", "value": "{{memberId}}" },
+                { "key": "page",     "value": "1" },
+                { "key": "limit",    "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "17. Get Check-in History (all gym)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/checkins?page=1&limit=20",
+              "query": [
+                { "key": "page",  "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 — Gym Context & Utils",
+      "item": [
+        {
+          "name": "18. Get Gym Context (owner roles + features)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has roles array', () => pm.expect(res.roles).to.be.an('array'));",
+                  "pm.test('Owner role present', () => pm.expect(res.roles).to.include('gym_owner'));",
+                  "console.log('Roles:', res.roles);",
+                  "const enabledFeatures = Object.entries(res.resolvedFeatures)",
+                  "  .filter(([, v]) => v.isEnabled)",
+                  "  .map(([k]) => k);",
+                  "console.log('Enabled features:', enabledFeatures);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": "{{baseUrl}}/me/gym-context",
+            "description": "Returns current user's roles at this gym + all resolved feature configs (defaultConfig merged with overrides)."
+          }
+        },
+        {
+          "name": "19. Get Gym QR Payload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has payload', () => pm.expect(res.payload).to.be.a('string'));",
+                  "const payload = JSON.parse(res.payload);",
+                  "pm.test('Payload type is gym_checkin', () => pm.expect(payload.type).to.equal('gym_checkin'));",
+                  "console.log('Gym QR payload:', res.payload);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "url": "{{baseUrl}}/checkins/gym-qr",
+            "description": "Returns the JSON payload to encode in the gym's physical QR code poster."
+          }
+        },
+        {
+          "name": "20. Get Client Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" }
+            ],
+            "url": "{{baseUrl}}/clients/{{gymSlug}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 — Error Cases",
+      "item": [
+        {
+          "name": "ERR: Duplicate Check-in (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Must have an open check-in for this member. Run after step 14 (self-scan, no checkout).",
+                  "pm.test('Returns 409 Conflict', () => pm.response.to.have.status(409));",
+                  "console.log('Conflict response:', JSON.stringify(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
+              { "key": "x-gym-slug",    "value": "{{gymSlug}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"manual\",\n  \"memberId\": \"{{memberId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/checkins",
+            "description": "Send when member is already checked in. Expects 409 Conflict with the existing checkInId."
+          }
+        },
+        {
+          "name": "ERR: Wrong login endpoint for gym user (400/401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejected (not 200)', () => pm.expect(pm.response.code).to.not.equal(200));",
+                  "console.log('Response:', JSON.stringify(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@ironforge.com\",\n  \"password\": \"Owner@2026!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/auth/admin/login",
+            "description": "GYM_USER accounts are rejected by /auth/admin/login. Should return 401."
+          }
+        },
+        {
+          "name": "ERR: Missing x-gym-slug (400/404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejected without slug', () => pm.expect(pm.response.code).to.not.equal(200));",
+                  "console.log('Response:', JSON.stringify(pm.response.json()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ownerToken}}" }
+            ],
+            "url": "{{baseUrl}}/members",
+            "description": "Endpoints requiring tenant context must fail without x-gym-slug header."
+          }
+        }
+      ]
+    }
+  ]
+}

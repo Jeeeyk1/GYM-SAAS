@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
 
 export class UpdateMemberDto {
   @IsOptional()
@@ -16,4 +16,12 @@ export class UpdateMemberDto {
   @IsOptional()
   @IsIn(['active', 'inactive', 'suspended', 'pending'])
   status?: string;
+
+  @IsOptional()
+  @IsDateString()
+  membershipExpiresAt?: string;
+
+  @IsOptional()
+  @IsDateString()
+  membershipStartedAt?: string;
 }

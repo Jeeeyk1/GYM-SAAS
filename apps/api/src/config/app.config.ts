@@ -13,4 +13,9 @@ export default registerAs('app', () => ({
   superadminToken: process.env.SUPERADMIN_TOKEN,
   inviteExpiryHours: parseInt(process.env.INVITE_EXPIRY_HOURS || '72', 10),
   qrSecret: (process.env.JWT_SECRET ?? '') + '_qr',
+  appUrl: process.env.APP_URL ?? 'http://localhost:3001',
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY ?? '',
+    fromAddress: process.env.EMAIL_FROM ?? 'GymSaaS <noreply@gmail.com>',
+  },
 }));

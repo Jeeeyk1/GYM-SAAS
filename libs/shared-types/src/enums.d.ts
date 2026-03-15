@@ -33,3 +33,11 @@ export declare enum StaffStatus {
     INACTIVE = "inactive",
     INVITED = "invited"
 }
+export declare enum AccountType {
+    PLATFORM_ADMIN = "PLATFORM_ADMIN",
+    GYM_USER = "gym_user"
+}
+export declare enum PlatformRole {
+    SUPER_ADMIN = "super_admin",
+    PLATFORM_SUPPORT = "platform_support"
+}

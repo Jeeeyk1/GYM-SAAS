@@ -7,7 +7,8 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ClientFeature, ClientProfile } from './client-feature.entity';
+import { ClientFeature } from './client-feature.entity';
+import { ClientProfile } from './client-profile.entity';
 import { Member } from './member.entity';
 
 export type ClientStatus = 'onboarding' | 'active' | 'suspended' | 'demo' | 'churned';

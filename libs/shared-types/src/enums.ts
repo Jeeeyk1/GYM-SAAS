@@ -40,7 +40,7 @@ export enum StaffStatus {
 }
 
 export enum AccountType {
-  PLATFORM_ADMIN = 'platform_admin',
+  PLATFORM_ADMIN = 'PLATFORM_ADMIN',
   GYM_USER = 'gym_user',
 }
 

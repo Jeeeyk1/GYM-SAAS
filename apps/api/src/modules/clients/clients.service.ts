@@ -2,8 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Client } from '../../database/entities/client.entity';
-import { ClientFeature, ClientProfile, FeatureDefinition } from '../../database/entities/client-feature.entity';
-import { IdentityRole } from '../../database/entities/role.entity';
+import { ClientFeature } from '../../database/entities/client-feature.entity';
+import { ClientProfile } from '../../database/entities/client-profile.entity';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
