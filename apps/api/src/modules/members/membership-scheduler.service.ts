@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Member } from '../../database/entities/member.entity';
 import { Identity } from '../../database/entities/identity.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { EmailService } from '../email/email.service';
 
 @Injectable()
@@ -39,12 +39,12 @@ export class MembershipSchedulerService {
     const expiring = await this.memberRepo
       .createQueryBuilder('m')
       .innerJoin(Identity, 'i', 'i.id = m.identity_id')
-      .innerJoin(Client, 'c', 'c.id = m.client_id')
+      .innerJoin(Organization, 'o', 'o.id = m.organization_id')
       .select('m.id', 'id')
       .addSelect('m.firstName', 'firstName')
       .addSelect('m.membershipExpiresAt', 'membershipExpiresAt')
       .addSelect('i.email', 'email')
-      .addSelect('c.name', 'gymName')
+      .addSelect('o.name', 'gymName')
       .where('m.status = :status', { status: 'active' })
       .andWhere('m.membershipExpiresAt BETWEEN :start AND :end', {
         start: windowStart,

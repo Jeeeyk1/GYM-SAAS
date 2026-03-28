@@ -4,22 +4,28 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
 import { Identity } from './identity.entity';
+import { Organization } from './organization.entity';
 import { Role } from './role.entity';
 
 @Entity('identity_roles')
 export class IdentityRole {
-  @PrimaryColumn({ name: 'identity_id' })
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'identity_id' })
   identityId: string;
 
-  @PrimaryColumn({ name: 'role_id' })
+  @Column({ name: 'role_id' })
   roleId: string;
 
-  @PrimaryColumn({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
+
+  @Column({ name: 'branch_id', nullable: true, type: 'varchar' })
+  branchId: string | null;
 
   @CreateDateColumn({ name: 'assigned_at', type: 'timestamptz' })
   assignedAt: Date;
@@ -35,7 +41,7 @@ export class IdentityRole {
   @JoinColumn({ name: 'role_id' })
   role: Role;
 
-  @ManyToOne(() => Client)
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 }

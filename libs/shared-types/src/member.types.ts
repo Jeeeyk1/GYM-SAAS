@@ -35,7 +35,7 @@ export interface UpdateMemberRequest {
 
 export interface MemberQrPayload {
   memberId: string;
-  clientId: string;
+  organizationId: string;
   issuedAt: number;
   expiresAt: number;
 }

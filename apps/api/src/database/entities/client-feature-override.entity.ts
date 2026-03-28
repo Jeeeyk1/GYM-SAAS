@@ -6,16 +6,16 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
 import { FeatureDefinition } from './feature-definition.entity';
+import { Organization } from './organization.entity';
 
 @Entity('client_feature_overrides')
 export class ClientFeatureOverride {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
 
   @Column({ name: 'feature_id' })
   featureId: string;
@@ -29,9 +29,9 @@ export class ClientFeatureOverride {
   @Column({ name: 'updated_by', nullable: true, type: 'varchar', length: 255 })
   updatedBy: string | null;
 
-  @ManyToOne(() => Client)
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 
   @ManyToOne(() => FeatureDefinition)
   @JoinColumn({ name: 'feature_id' })

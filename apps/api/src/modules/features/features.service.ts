@@ -21,13 +21,13 @@ export class FeaturesService {
     private readonly featureResolver: FeatureResolverService,
   ) {}
 
-  async listFeatures(clientId: string): Promise<FeatureResponse[]> {
+  async listFeatures(organizationId: string): Promise<FeatureResponse[]> {
     const clientFeatures = await this.clientFeatureRepo.find({
-      where: { clientId },
+      where: { organizationId },
       relations: ['featureDefinition'],
     });
 
-    const overrides = await this.overrideRepo.find({ where: { clientId } });
+    const overrides = await this.overrideRepo.find({ where: { organizationId } });
     const overrideByFeatureId = new Map(overrides.map((o) => [o.featureId, o.config]));
 
     return clientFeatures.map((cf) => {
@@ -45,7 +45,7 @@ export class FeaturesService {
   }
 
   async updateFeature(
-    clientId: string,
+    organizationId: string,
     key: string,
     dto: UpdateFeatureDto,
   ): Promise<FeatureResponse> {
@@ -57,7 +57,7 @@ export class FeaturesService {
     if (!def) throw new NotFoundException(`Feature '${key}' not found`);
 
     const cf = await this.clientFeatureRepo.findOne({
-      where: { clientId, featureId: def.id },
+      where: { organizationId, featureId: def.id },
     });
     if (!cf) throw new NotFoundException(`Feature '${key}' is not configured for this gym`);
 
@@ -73,7 +73,7 @@ export class FeaturesService {
 
     if (dto.config !== undefined) {
       let override = await this.overrideRepo.findOne({
-        where: { clientId, featureId: def.id },
+        where: { organizationId, featureId: def.id },
       });
       if (override) {
         override.config = dto.config;
@@ -81,7 +81,7 @@ export class FeaturesService {
       } else {
         await this.overrideRepo.save(
           this.overrideRepo.create({
-            clientId,
+            organizationId,
             featureId: def.id,
             config: dto.config,
             updatedBy: null,
@@ -91,12 +91,12 @@ export class FeaturesService {
       overrideConfig = dto.config;
     } else {
       const existing = await this.overrideRepo.findOne({
-        where: { clientId, featureId: def.id },
+        where: { organizationId, featureId: def.id },
       });
       overrideConfig = existing?.config ?? {};
     }
 
-    this.featureResolver.invalidate(clientId);
+    this.featureResolver.invalidate(organizationId);
 
     return {
       key: def.key,

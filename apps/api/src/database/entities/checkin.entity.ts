@@ -6,8 +6,8 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
 import { Member } from './member.entity';
+import { Organization } from './organization.entity';
 
 export type CheckInMethod = 'qr_staff_scan' | 'qr_self_scan' | 'manual';
 export type CheckoutMethod = 'manual' | 'auto' | 'staff';
@@ -17,8 +17,8 @@ export class CheckIn {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
 
   @Column({ name: 'member_id' })
   memberId: string;
@@ -44,9 +44,9 @@ export class CheckIn {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @ManyToOne(() => Client)
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 
   @ManyToOne(() => Member)
   @JoinColumn({ name: 'member_id' })

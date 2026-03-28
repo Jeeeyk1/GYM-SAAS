@@ -1,24 +1,25 @@
-import { ClientPlan, ClientStatus } from './enums';
-import { ClientResponse } from './client.types';
+import { SubscriptionPlan } from './enums';
+import { OrganizationResponse } from './organization.types';
 import { StaffResponse } from './staff.types';
 
 export interface CreateGymRequest {
   slug: string;
   name: string;
   ownerEmail: string;
-  plan?: ClientPlan;
+  ownerFirstName: string;
+  ownerLastName: string;
+  plan?: SubscriptionPlan;
   isDemo?: boolean;
-  demoExpiresAt?: string;
 }
 
 export interface CreateGymResponse {
-  client: ClientResponse;
+  organization: OrganizationResponse;
   ownerStaff: StaffResponse;
   inviteToken: string;
 }
 
 export interface GymContextResponse {
-  currentGym: ClientResponse;
+  currentOrg: OrganizationResponse;
   roles: string[];
   permissions: string[];
   resolvedFeatures: Record<string, { isEnabled: boolean; config: Record<string, unknown> }>;

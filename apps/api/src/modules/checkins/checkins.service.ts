@@ -34,7 +34,7 @@ export class CheckInsService {
     tenant: TenantContext,
     actorIdentityId: string,
   ): Promise<{ checkIn: CheckIn; outcomes: CheckInOutcome[] }> {
-    const features = await this.featureResolver.resolve(tenant.clientId);
+    const features = await this.featureResolver.resolve(tenant.organizationId);
 
     if (!features.get('checkin.basic')?.isEnabled) {
       throw new ForbiddenException('Check-ins are not enabled for this gym');
@@ -53,14 +53,14 @@ export class CheckInsService {
         throw new BadRequestException('qrToken is required for qr_staff_scan');
       }
       const qrData = this.qrService.validateMemberQr(dto.qrToken);
-      if (qrData.clientId !== tenant.clientId) {
+      if (qrData.organizationId !== tenant.organizationId) {
         throw new ForbiddenException('QR token belongs to a different gym');
       }
       memberId = qrData.memberId;
     } else {
       // qr_self_scan: the authenticated user is the member
       const member = await this.memberRepo.findOne({
-        where: { identityId: actorIdentityId, clientId: tenant.clientId },
+        where: { identityId: actorIdentityId, organizationId: tenant.organizationId },
       });
       if (!member) {
         throw new NotFoundException('No member record found for this user at this gym');
@@ -70,7 +70,7 @@ export class CheckInsService {
 
     // ── 2. Load member ────────────────────────────────────────────────────────
     const member = await this.memberRepo.findOne({
-      where: { id: memberId, clientId: tenant.clientId },
+      where: { id: memberId, organizationId: tenant.organizationId },
       relations: ['privacySettings'],
     });
     if (!member) {
@@ -88,11 +88,11 @@ export class CheckInsService {
 
     const openCheckIn = await this.checkInRepo
       .createQueryBuilder('ci')
-      .where('ci.member_id = :memberId', { memberId })
-      .andWhere('ci.client_id = :clientId', { clientId: tenant.clientId })
-      .andWhere('ci.checked_out_at IS NULL')
+      .where('ci.memberId = :memberId', { memberId })
+      .andWhere('ci.organizationId = :organizationId', { organizationId: tenant.organizationId })
+      .andWhere('ci.checkedOutAt IS NULL')
       .andWhere(
-        `ci.checked_in_at > now() - interval '${duplicateWindowMinutes} minutes'`,
+        `ci.checkedInAt > now() - interval '${duplicateWindowMinutes} minutes'`,
       )
       .getOne();
 
@@ -105,7 +105,7 @@ export class CheckInsService {
 
     // ── 4. Create check-in ────────────────────────────────────────────────────
     const checkIn = this.checkInRepo.create({
-      clientId: tenant.clientId,
+      organizationId: tenant.organizationId,
       memberId: member.id,
       method: dto.method,
       station: dto.station ?? null,
@@ -144,7 +144,7 @@ export class CheckInsService {
     method: 'manual' | 'staff',
   ): Promise<CheckIn> {
     const checkIn = await this.checkInRepo.findOne({
-      where: { id: checkInId, clientId: tenant.clientId },
+      where: { id: checkInId, organizationId: tenant.organizationId },
     });
 
     if (!checkIn) throw new NotFoundException('Check-in not found');
@@ -160,21 +160,21 @@ export class CheckInsService {
     tenant: TenantContext,
   ): Promise<{ token: string; expiresAt: Date }> {
     const member = await this.memberRepo.findOne({
-      where: { id: memberId, clientId: tenant.clientId },
+      where: { id: memberId, organizationId: tenant.organizationId },
     });
     if (!member) throw new NotFoundException('Member not found');
 
-    return this.qrService.generateMemberQr(memberId, tenant.clientId, this.memberRepo);
+    return this.qrService.generateMemberQr(memberId, tenant.organizationId, this.memberRepo);
   }
 
   async getGymQr(tenant: TenantContext): Promise<{ payload: string }> {
-    return { payload: this.qrService.getGymQrPayload(tenant.clientSlug) };
+    return { payload: this.qrService.getGymQrPayload(tenant.orgSlug) };
   }
 
   async getActiveMembers(
     tenant: TenantContext,
   ): Promise<Array<{ memberId: string; firstName: string; lastName: string; checkedInAt: Date }>> {
-    const features = await this.featureResolver.resolve(tenant.clientId);
+    const features = await this.featureResolver.resolve(tenant.organizationId);
 
     if (!features.get('checkin.active_members_board')?.isEnabled) {
       throw new ForbiddenException('Active members board is not enabled for this gym');
@@ -191,11 +191,11 @@ export class CheckInsService {
         'm.firstName',
         'm.lastName',
       ])
-      .where('ci.client_id = :clientId', { clientId: tenant.clientId })
-      .andWhere('ci.checked_out_at IS NULL')
-      .andWhere("ci.checked_in_at > now() - interval '4 hours'")
+      .where('ci.organizationId = :organizationId', { organizationId: tenant.organizationId })
+      .andWhere('ci.checkedOutAt IS NULL')
+      .andWhere("ci.checkedInAt > now() - interval '4 hours'")
       .andWhere('ps.show_in_active_members = true')
-      .orderBy('ci.checked_in_at', 'DESC')
+      .orderBy('ci.checkedInAt', 'DESC')
       .getMany();
 
     return rows.map((ci) => ({
@@ -215,19 +215,19 @@ export class CheckInsService {
 
     const qb = this.checkInRepo
       .createQueryBuilder('ci')
-      .where('ci.client_id = :clientId', { clientId: tenant.clientId });
+      .where('ci.organizationId = :organizationId', { organizationId: tenant.organizationId });
 
     if (query.memberId) {
-      // Verify member belongs to this gym
+      // Verify member belongs to this org
       const member = await this.memberRepo.findOne({
-        where: { id: query.memberId, clientId: tenant.clientId },
+        where: { id: query.memberId, organizationId: tenant.organizationId },
       });
       if (!member) throw new NotFoundException('Member not found');
-      qb.andWhere('ci.member_id = :memberId', { memberId: query.memberId });
+      qb.andWhere('ci.memberId = :memberId', { memberId: query.memberId });
     }
 
     const [data, total] = await qb
-      .orderBy('ci.checked_in_at', 'DESC')
+      .orderBy('ci.checkedInAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();

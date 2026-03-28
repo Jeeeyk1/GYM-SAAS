@@ -18,7 +18,7 @@ export class InviteService {
   ) {}
 
   async create(params: {
-    clientId: string;
+    organizationId: string;
     identityId: string;
     role: string;
     type: InviteType;
@@ -30,7 +30,7 @@ export class InviteService {
 
     const invite = this.inviteRepo.create({
       token,
-      clientId: params.clientId,
+      organizationId: params.organizationId,
       identityId: params.identityId,
       role: params.role,
       type: params.type,
@@ -45,7 +45,7 @@ export class InviteService {
   async validate(token: string): Promise<Invite> {
     const invite = await this.inviteRepo.findOne({
       where: { token },
-      relations: ['identity', 'client'],
+      relations: ['identity', 'organization'],
     });
 
     if (!invite) throw new NotFoundException('Invite not found or already used');

@@ -8,8 +8,8 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
 import { MemberPrivacySettings } from './member.privacy.settings.entity';
+import { Organization } from './organization.entity';
 
 export type MemberStatus = 'active' | 'inactive' | 'suspended' | 'pending';
 
@@ -18,8 +18,11 @@ export class Member {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
+
+  @Column({ name: 'branch_id', nullable: true, type: 'varchar' })
+  branchId: string | null;
 
   @Column({ name: 'identity_id', nullable: true, type: 'varchar', length: 255 })
   identityId: string | null;
@@ -66,9 +69,9 @@ export class Member {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @ManyToOne(() => Client, (c) => c.members)
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 
   @OneToOne(() => MemberPrivacySettings, (p) => p.member, { cascade: true })
   privacySettings: MemberPrivacySettings;

@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(pnpm test:*)"
+      "Bash(pnpm test:*)",
+      "Read(//Users/jake/Documents/gym-sass-monorepo/monorepo/**)",
+      "Bash(node -e:*)",
+      "Bash(pnpm --filter @gym-saas/api test -- --testPathPattern=\"auth.service\")",
+      "Bash(npx jest --testPathPattern=\"auth.service\")",
+      "Bash(pnpm --filter @gym-saas/api test:*)",
+      "Bash(/Users/jake/Documents/gym-sass-monorepo/monorepo/apps/api/src/database/seeds/001_feature_definitions.sql:*)",
+      "Bash(/Users/jake/Documents/gym-sass-monorepo/monorepo/libs/shared-config/src/index.d.ts:*)"
     ]
   }
 }

@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { Member } from '../../database/entities/member.entity';
 import { Identity } from '../../database/entities/identity.entity';
 import { MemberPrivacySettings } from '../../database/entities/member.privacy.settings.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
 import { ClientFeatureOverride } from '../../database/entities/client-feature-override.entity';
 import { IdentityRole } from '../../database/entities/identity-role.entity';
@@ -27,8 +27,8 @@ export class MembersService {
     private readonly identityRepo: Repository<Identity>,
     @InjectRepository(MemberPrivacySettings)
     private readonly privacyRepo: Repository<MemberPrivacySettings>,
-    @InjectRepository(Client)
-    private readonly clientRepo: Repository<Client>,
+    @InjectRepository(Organization)
+    private readonly orgRepo: Repository<Organization>,
     @InjectRepository(ClientFeature)
     private readonly clientFeatureRepo: Repository<ClientFeature>,
     @InjectRepository(ClientFeatureOverride)
@@ -41,15 +41,15 @@ export class MembersService {
     private readonly emailService: EmailService,
   ) {}
 
-  async list(clientId: string): Promise<Member[]> {
+  async list(organizationId: string): Promise<Member[]> {
     return this.memberRepo.find({
-      where: { clientId },
+      where: { organizationId },
       relations: ['privacySettings'],
       order: { createdAt: 'DESC' },
     });
   }
 
-  async create(clientId: string, dto: CreateMemberDto): Promise<{ member: Member; inviteToken: string }> {
+  async create(organizationId: string, dto: CreateMemberDto): Promise<{ member: Member; inviteToken: string }> {
     let identity = await this.identityRepo.findOne({ where: { email: dto.email } });
     if (!identity) {
       identity = await this.identityRepo.save(
@@ -62,12 +62,12 @@ export class MembersService {
       );
     }
 
-    const memberCount = await this.memberRepo.count({ where: { clientId } });
+    const memberCount = await this.memberRepo.count({ where: { organizationId } });
     const memberNumber = formatMemberNumber('GYM', memberCount + 1);
 
     const member = await this.memberRepo.save(
       this.memberRepo.create({
-        clientId,
+        organizationId,
         identityId: identity.id,
         memberNumber,
         firstName: dto.firstName,
@@ -83,33 +83,34 @@ export class MembersService {
     await this.privacyRepo.save(this.privacyRepo.create({ memberId: member.id }));
 
     // Assign member role in identity_roles so GymRoleGuard recognises them
-    const memberRole = await this.roleRepo.findOne({ where: { name: 'member', clientId } });
+    const memberRole = await this.roleRepo.findOne({ where: { name: 'member', organizationId } });
     if (memberRole) {
       await this.identityRoleRepo.save(
         this.identityRoleRepo.create({
           identityId: identity.id,
           roleId: memberRole.id,
-          clientId,
+          organizationId,
+          branchId: null,
           assignedBy: null,
         }),
       );
     }
 
     const invite = await this.inviteService.create({
-      clientId,
+      organizationId,
       identityId: identity.id,
       role: 'member',
       type: 'member',
       invitedBy: null,
     });
 
-    const client = await this.clientRepo.findOne({ where: { id: clientId } });
+    const org = await this.orgRepo.findOne({ where: { id: organizationId } });
 
     try {
       await this.emailService.sendMemberWelcome({
         to: dto.email,
         memberName: dto.firstName,
-        gymName: client?.name ?? 'the gym',
+        gymName: org?.name ?? 'the gym',
         inviteToken: invite.token,
       });
     } catch (err) {
@@ -119,40 +120,40 @@ export class MembersService {
     return { member, inviteToken: invite.token };
   }
 
-  async getById(clientId: string, memberId: string): Promise<Member> {
+  async getById(organizationId: string, memberId: string): Promise<Member> {
     const member = await this.memberRepo.findOne({
-      where: { id: memberId, clientId },
+      where: { id: memberId, organizationId },
       relations: ['privacySettings'],
     });
     if (!member) throw new NotFoundException('Member not found');
     return member;
   }
 
-  async update(clientId: string, memberId: string, dto: UpdateMemberDto): Promise<Member> {
-    const member = await this.getById(clientId, memberId);
+  async update(organizationId: string, memberId: string, dto: UpdateMemberDto): Promise<Member> {
+    const member = await this.getById(organizationId, memberId);
     Object.assign(member, dto);
     return this.memberRepo.save(member);
   }
 
   async updatePrivacy(
     callerIdentityId: string,
-    clientId: string,
+    organizationId: string,
     memberId: string,
     dto: UpdatePrivacySettingsDto,
   ): Promise<MemberPrivacySettings> {
-    const member = await this.getById(clientId, memberId);
+    const member = await this.getById(organizationId, memberId);
 
     // Members can only update their own privacy settings
     const callerRoles = await this.identityRoleRepo
       .createQueryBuilder('ir')
       .innerJoin('ir.role', 'r')
       .select('r.name', 'name')
-      .where('ir.identity_id = :id', { id: callerIdentityId })
-      .andWhere('ir.client_id = :clientId', { clientId })
+      .where('ir.identityId = :id', { id: callerIdentityId })
+      .andWhere('ir.organizationId = :organizationId', { organizationId })
       .getRawMany<{ name: string }>();
 
     const roleNames = callerRoles.map((r) => r.name);
-    const isStaff = roleNames.some((r) => ['gym_owner', 'gym_admin'].includes(r));
+    const isStaff = roleNames.some((r) => ['org_owner', 'gym_owner'].includes(r));
 
     if (!isStaff && member.identityId !== callerIdentityId) {
       throw new ForbiddenException();
@@ -166,18 +167,18 @@ export class MembersService {
     return this.privacyRepo.save(settings);
   }
 
-  async getGymContext(identityId: string, clientId: string) {
-    const client = await this.clientRepo.findOne({
-      where: { id: clientId },
+  async getGymContext(identityId: string, organizationId: string) {
+    const org = await this.orgRepo.findOne({
+      where: { id: organizationId },
       relations: ['profile'],
     });
-    if (!client) throw new NotFoundException('Gym not found');
+    if (!org) throw new NotFoundException('Organization not found');
 
     const identityRoles = await this.identityRoleRepo
       .createQueryBuilder('ir')
       .innerJoinAndSelect('ir.role', 'role')
-      .where('ir.identity_id = :identityId', { identityId })
-      .andWhere('ir.client_id = :clientId', { clientId })
+      .where('ir.identityId = :identityId', { identityId })
+      .andWhere('ir.organizationId = :organizationId', { organizationId })
       .getMany();
 
     const roles = identityRoles.map((ir) => ir.role.name);
@@ -185,10 +186,10 @@ export class MembersService {
     const clientFeatures = await this.clientFeatureRepo
       .createQueryBuilder('cf')
       .innerJoinAndSelect('cf.featureDefinition', 'fd')
-      .where('cf.client_id = :clientId', { clientId })
+      .where('cf.organizationId = :organizationId', { organizationId })
       .getMany();
 
-    const overrides = await this.featureOverrideRepo.find({ where: { clientId } });
+    const overrides = await this.featureOverrideRepo.find({ where: { organizationId } });
     const overrideByFeatureId = new Map(overrides.map((o) => [o.featureId, o.config]));
 
     const resolvedFeatures = clientFeatures.reduce<
@@ -202,6 +203,6 @@ export class MembersService {
       return acc;
     }, {});
 
-    return { currentGym: client, roles, permissions: [], resolvedFeatures };
+    return { currentOrg: org, roles, permissions: [], resolvedFeatures };
   }
 }

@@ -1,3 +1,12 @@
+export enum OrgStatus {
+  ONBOARDING = 'onboarding',
+  ACTIVE = 'active',
+  SUSPENDED = 'suspended',
+  DEMO = 'demo',
+  CHURNED = 'churned',
+}
+
+/** @deprecated Use OrgStatus */
 export enum ClientStatus {
   ONBOARDING = 'onboarding',
   ACTIVE = 'active',
@@ -6,6 +15,13 @@ export enum ClientStatus {
   CHURNED = 'churned',
 }
 
+export enum SubscriptionPlan {
+  BASIC = 'basic',
+  ADVANCED = 'advanced',
+  ENTERPRISE = 'enterprise',
+}
+
+/** @deprecated Use SubscriptionPlan */
 export enum ClientPlan {
   STARTER = 'starter',
   GROWTH = 'growth',
@@ -45,6 +61,5 @@ export enum AccountType {
 }
 
 export enum PlatformRole {
-  SUPER_ADMIN = 'super_admin',
-  PLATFORM_SUPPORT = 'platform_support',
+  GYM_ADMIN = 'gym_admin',
 }

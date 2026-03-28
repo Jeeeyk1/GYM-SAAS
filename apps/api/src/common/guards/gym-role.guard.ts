@@ -12,19 +12,9 @@ import { AccountType } from '@gym-saas/shared-types';
 import { GYM_ROLES_KEY } from '../decorators/roles.decorators';
 import { JwtPayload } from '../../modules/auth/strategies/jwt.strategy';
 import { TenantContext } from '../middleware/tenant-context.middleware';
+import { IdentityRole } from '../../database/entities/identity-role.entity';
+import { Member } from '../../database/entities/member.entity';
 
-/**
- * Enforces gym-level role access.
- * Resolves the current user's roles from identity_roles for the active gym
- * (tenantContext.clientId) on each request — NOT from the JWT, because one
- * identity can hold different roles at different gyms.
- *
- * Must run AFTER JwtAuthGuard (req.user) and TenantContextMiddleware (req.tenantContext).
- *
- * Usage:
- *   @UseGuards(JwtAuthGuard, GymRoleGuard)
- *   @GymRoles('gym_owner', 'gym_admin')
- */
 @Injectable()
 export class GymRoleGuard implements CanActivate {
   constructor(
@@ -38,7 +28,6 @@ export class GymRoleGuard implements CanActivate {
       ctx.getClass(),
     ]);
 
-    // No @GymRoles() set — guard is a no-op
     if (!required?.length) return true;
 
     const req = ctx.switchToHttp().getRequest<{
@@ -48,37 +37,44 @@ export class GymRoleGuard implements CanActivate {
 
     const tenantContext = req.tenantContext;
     if (!tenantContext) {
-      throw new BadRequestException('Gym context required — include the x-gym-slug header');
+      throw new BadRequestException('Organization context required — include the x-org-slug header');
     }
 
-    // Platform admin tokens are not valid for gym-scoped endpoints
     if (req.user.accountType !== AccountType.GYM_USER) {
       throw new ForbiddenException();
     }
 
-    const rows: Array<{ name: string }> = await this.dataSource.query(
-      `SELECT r.name
-       FROM identity_roles ir
-       JOIN roles r ON r.id = ir.role_id
-       WHERE ir.identity_id = $1 AND ir.client_id = $2`,
-      [req.user.sub, tenantContext.clientId],
+    const identityRoles = await this.dataSource
+      .getRepository(IdentityRole)
+      .createQueryBuilder('ir')
+      .innerJoinAndSelect('ir.role', 'r')
+      .where('ir.identityId = :identityId', { identityId: req.user.sub })
+      .andWhere('ir.organizationId = :orgId', { orgId: tenantContext.organizationId })
+      .getMany();
+
+    // Branch-scoped roles only apply when branchId matches.
+    // Org-wide roles (branchId = null) always apply regardless of branch context.
+    const applicable = identityRoles.filter(
+      (ir) => ir.branchId === null || ir.branchId === tenantContext.branchId,
     );
 
-    const roleNames = rows.map((r) => r.name);
+    const roleNames = applicable.map((ir) => ir.role.name);
+
     if (!required.some((r) => roleNames.includes(r))) {
       throw new ForbiddenException();
     }
 
-    // Member-only users: block all gym-scoped actions when membership has expired
     const isMemberOnly = roleNames.length > 0 && roleNames.every((r) => r === 'member');
     if (isMemberOnly) {
-      const expRows: Array<{ membership_expires_at: Date | null }> = await this.dataSource.query(
-        `SELECT membership_expires_at FROM members
-         WHERE identity_id = $1 AND client_id = $2 LIMIT 1`,
-        [req.user.sub, tenantContext.clientId],
-      );
-      const expiresAt = expRows[0]?.membership_expires_at;
-      if (expiresAt && new Date(expiresAt) < new Date()) {
+      const member = await this.dataSource
+        .getRepository(Member)
+        .createQueryBuilder('m')
+        .select(['m.membershipExpiresAt'])
+        .where('m.identityId = :identityId', { identityId: req.user.sub })
+        .andWhere('m.organizationId = :orgId', { orgId: tenantContext.organizationId })
+        .getOne();
+
+      if (member?.membershipExpiresAt && new Date(member.membershipExpiresAt) < new Date()) {
         throw new ForbiddenException('Membership has expired. Please renew to continue.');
       }
     }

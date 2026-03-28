@@ -16,7 +16,8 @@ export interface CreateStaffRequest {
   lastName: string;
   email: string;
   title?: string;
-  role: 'gym_owner' | 'gym_admin' | 'front_desk';
+  role: 'gym_owner' | 'staff';
+  branchId?: string;
 }
 
 export interface UpdateStaffRequest {

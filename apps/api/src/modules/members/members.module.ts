@@ -5,7 +5,7 @@ import { MembersService } from './members.service';
 import { Member } from '../../database/entities/member.entity';
 import { Identity } from '../../database/entities/identity.entity';
 import { MemberPrivacySettings } from '../../database/entities/member.privacy.settings.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
 import { ClientFeatureOverride } from '../../database/entities/client-feature-override.entity';
 import { IdentityRole } from '../../database/entities/identity-role.entity';
@@ -20,7 +20,7 @@ import { MembershipSchedulerService } from './membership-scheduler.service';
       Member,
       Identity,
       MemberPrivacySettings,
-      Client,
+      Organization,
       ClientFeature,
       ClientFeatureOverride,
       IdentityRole,

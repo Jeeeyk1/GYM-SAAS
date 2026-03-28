@@ -26,7 +26,7 @@ export class CreateGymDto {
   ownerLastName: string;
 
   @IsOptional()
-  @IsIn(['starter', 'growth', 'enterprise'])
+  @IsIn(['basic', 'advanced', 'enterprise'])
   plan?: string;
 
   @IsOptional()

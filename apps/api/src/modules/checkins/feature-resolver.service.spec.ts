@@ -12,7 +12,7 @@ const makeClientFeature = (
   defaultConfig: Record<string, unknown> = {},
   featureId = `feat-${key}`,
 ): Partial<ClientFeature> => ({
-  clientId: 'client-1',
+  organizationId: 'org-1',
   featureId,
   isEnabled,
   featureDefinition: {
@@ -26,7 +26,7 @@ const makeOverride = (
   featureId: string,
   config: Record<string, unknown>,
 ): Partial<ClientFeatureOverride> => ({
-  clientId: 'client-1',
+  organizationId: 'org-1',
   featureId,
   config,
 });
@@ -61,7 +61,7 @@ describe('FeatureResolverService', () => {
     ]);
     overrideRepo.find.mockResolvedValue([]);
 
-    const result = await service.resolve('client-1');
+    const result = await service.resolve('org-1');
 
     expect(clientFeatureRepo.find).toHaveBeenCalledTimes(1);
     expect(result.has('checkin.basic')).toBe(true);
@@ -76,8 +76,8 @@ describe('FeatureResolverService', () => {
     ]);
     overrideRepo.find.mockResolvedValue([]);
 
-    await service.resolve('client-1'); // populates cache
-    await service.resolve('client-1'); // should hit cache
+    await service.resolve('org-1'); // populates cache
+    await service.resolve('org-1'); // should hit cache
 
     expect(clientFeatureRepo.find).toHaveBeenCalledTimes(1);
   });
@@ -103,8 +103,8 @@ describe('FeatureResolverService', () => {
       .mockReturnValueOnce(T + 61_000)  // 2nd resolve: TTL check → expired
       .mockReturnValueOnce(T + 61_000); // 2nd resolve: sets new cachedAt
 
-    await service.resolve('client-1'); // fills cache with T
-    await service.resolve('client-1'); // TTL check sees 61s elapsed → cache miss → re-query
+    await service.resolve('org-1'); // fills cache with T
+    await service.resolve('org-1'); // TTL check sees 61s elapsed → cache miss → re-query
 
     expect(clientFeatureRepo.find).toHaveBeenCalledTimes(2);
   });
@@ -124,7 +124,7 @@ describe('FeatureResolverService', () => {
       makeOverride('feat-loyalty', { points_per_visit: 20 }),
     ]);
 
-    const result = await service.resolve('client-1');
+    const result = await service.resolve('org-1');
     const loyalty = result.get('checkin.loyalty_points');
 
     expect(loyalty?.isEnabled).toBe(true);
@@ -138,7 +138,7 @@ describe('FeatureResolverService', () => {
     ]);
     overrideRepo.find.mockResolvedValue([]); // no overrides
 
-    const result = await service.resolve('client-1');
+    const result = await service.resolve('org-1');
     const basic = result.get('checkin.basic');
 
     expect(basic?.config['duplicate_window_minutes']).toBe(60);
@@ -150,15 +150,15 @@ describe('FeatureResolverService', () => {
     ]);
     overrideRepo.find.mockResolvedValue([]);
 
-    const result = await service.resolve('client-1');
+    const result = await service.resolve('org-1');
     expect(result.get('checkin.welcome_message')?.isEnabled).toBe(false);
   });
 
-  it('returns an empty Map when the gym has no feature rows', async () => {
+  it('returns an empty Map when the org has no feature rows', async () => {
     clientFeatureRepo.find.mockResolvedValue([]);
     overrideRepo.find.mockResolvedValue([]);
 
-    const result = await service.resolve('client-1');
+    const result = await service.resolve('org-1');
     expect(result.size).toBe(0);
   });
 
@@ -170,29 +170,29 @@ describe('FeatureResolverService', () => {
     ]);
     overrideRepo.find.mockResolvedValue([]);
 
-    await service.resolve('client-1'); // fills cache
-    service.invalidate('client-1');    // removes entry
-    await service.resolve('client-1'); // must re-query
+    await service.resolve('org-1'); // fills cache
+    service.invalidate('org-1');    // removes entry
+    await service.resolve('org-1'); // must re-query
 
     expect(clientFeatureRepo.find).toHaveBeenCalledTimes(2);
   });
 
-  it('invalidate() is a no-op for a clientId that was never resolved', () => {
-    expect(() => service.invalidate('unknown-client')).not.toThrow();
+  it('invalidate() is a no-op for an organizationId that was never resolved', () => {
+    expect(() => service.invalidate('unknown-org')).not.toThrow();
   });
 
-  it('cache is isolated per clientId', async () => {
+  it('cache is isolated per organizationId', async () => {
     clientFeatureRepo.find.mockResolvedValue([]);
     overrideRepo.find.mockResolvedValue([]);
 
-    await service.resolve('client-1');
-    await service.resolve('client-2');
+    await service.resolve('org-1');
+    await service.resolve('org-2');
 
     expect(clientFeatureRepo.find).toHaveBeenCalledTimes(2);
 
-    // Second call to client-1 uses cache; client-2 uses its own cache
-    await service.resolve('client-1');
-    await service.resolve('client-2');
+    // Second call to org-1 uses cache; org-2 uses its own cache
+    await service.resolve('org-1');
+    await service.resolve('org-2');
 
     expect(clientFeatureRepo.find).toHaveBeenCalledTimes(2);
   });

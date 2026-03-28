@@ -10,7 +10,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { Member } from '../../database/entities/member.entity';
 import { Identity } from '../../database/entities/identity.entity';
 import { Staff } from '../../database/entities/staff.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
 import { FeatureDefinition } from '../../database/entities/feature-definition.entity';
 import { IdentityRole } from '../../database/entities/identity-role.entity';
@@ -28,7 +28,7 @@ import { InviteService } from './invite.service';
         signOptions: { expiresIn: config.get('app.jwtAccessExpiresIn', '15m') },
       }),
     }),
-    TypeOrmModule.forFeature([Identity, Member, Staff, Client, ClientFeature, FeatureDefinition, IdentityRole, Role, Invite]),
+    TypeOrmModule.forFeature([Identity, Member, Staff, Organization, ClientFeature, FeatureDefinition, IdentityRole, Role, Invite]),
   ],
   controllers: [AuthController],
   providers: [AuthService, InviteService, AuthController, JwtStrategy, JwtRefreshStrategy],

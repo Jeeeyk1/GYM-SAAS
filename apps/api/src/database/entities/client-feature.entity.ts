@@ -5,16 +5,16 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
 import { FeatureDefinition } from './feature-definition.entity';
+import { Organization } from './organization.entity';
 
 @Entity('client_features')
 export class ClientFeature {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
 
   @Column({ name: 'feature_id' })
   featureId: string;
@@ -25,9 +25,9 @@ export class ClientFeature {
   @Column({ name: 'enabled_at', type: 'timestamptz', nullable: true })
   enabledAt: Date | null;
 
-  @ManyToOne(() => Client, (c) => c.clientFeatures)
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization, (org) => org.clientFeatures)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 
   @ManyToOne(() => FeatureDefinition)
   @JoinColumn({ name: 'feature_id' })

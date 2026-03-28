@@ -25,45 +25,45 @@ export class MembersController {
   constructor(private readonly membersService: MembersService) {}
 
   @Get('members')
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   list(@CurrentTenant() tenant: TenantContext) {
-    return this.membersService.list(tenant.clientId);
+    return this.membersService.list(tenant.organizationId);
   }
 
   @Post('members')
-  @GymRoles('gym_owner', 'gym_admin')
+  @GymRoles('org_owner', 'gym_owner')
   create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateMemberDto) {
-    return this.membersService.create(tenant.clientId, dto);
+    return this.membersService.create(tenant.organizationId, dto);
   }
 
   @Get('members/:id')
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   getById(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.membersService.getById(tenant.clientId, id);
+    return this.membersService.getById(tenant.organizationId, id);
   }
 
   @Patch('members/:id')
-  @GymRoles('gym_owner', 'gym_admin')
+  @GymRoles('org_owner', 'gym_owner')
   update(
     @CurrentTenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateMemberDto,
   ) {
-    return this.membersService.update(tenant.clientId, id, dto);
+    return this.membersService.update(tenant.organizationId, id, dto);
   }
 
   @Patch('members/:id/privacy')
-  @GymRoles('gym_owner', 'gym_admin', 'member')
+  @GymRoles('org_owner', 'gym_owner', 'member')
   updatePrivacy(
     @CurrentUser() user: JwtPayload,
     @CurrentTenant() tenant: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePrivacySettingsDto,
   ) {
-    return this.membersService.updatePrivacy(user.sub, tenant.clientId, id, dto);
+    return this.membersService.updatePrivacy(user.sub, tenant.organizationId, id, dto);
   }
 
   @Get('me/gym-context')
@@ -71,6 +71,6 @@ export class MembersController {
     @CurrentUser() user: JwtPayload,
     @CurrentTenant() tenant: TenantContext,
   ) {
-    return this.membersService.getGymContext(user.sub, tenant.clientId);
+    return this.membersService.getGymContext(user.sub, tenant.organizationId);
   }
 }

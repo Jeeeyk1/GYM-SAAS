@@ -31,10 +31,11 @@ const makeQb = (getOneResult: Partial<CheckIn> | null = null) => ({
 });
 
 const TENANT: TenantContext = {
-  clientId: 'client-1',
-  clientSlug: 'test-gym',
+  organizationId: 'org-1',
+  orgSlug: 'test-gym',
   plan: 'basic',
   isDemo: false,
+  branchId: null,
 };
 const ACTOR_ID = 'identity-1';
 
@@ -134,11 +135,9 @@ describe('CheckInsService', () => {
     it('throws ForbiddenException for qr_staff_scan from a different gym', async () => {
       featureResolver.resolve.mockResolvedValue(makeFeatures());
       qrService.validateMemberQr.mockReturnValue({
-        clientId: 'different-gym',
+        organizationId: 'different-gym',
         memberId: 'member-1',
-        sub: ACTOR_ID,
-        type: 'member_qr',
-      } as any);
+      });
 
       await expect(
         service.checkIn(
@@ -195,7 +194,7 @@ describe('CheckInsService', () => {
       const qb = makeQb(null);
       checkInRepo.createQueryBuilder.mockReturnValue(qb);
 
-      const newCheckIn = { id: 'ci-new', clientId: 'client-1', memberId: 'member-1', metadata: null };
+      const newCheckIn = { id: 'ci-new', organizationId: 'org-1', memberId: 'member-1', metadata: null };
       checkInRepo.create.mockReturnValue(newCheckIn);
       checkInRepo.save.mockResolvedValue(newCheckIn);
 
@@ -216,16 +215,14 @@ describe('CheckInsService', () => {
     it('resolves member via qr_staff_scan and creates check-in', async () => {
       featureResolver.resolve.mockResolvedValue(makeFeatures());
       qrService.validateMemberQr.mockReturnValue({
-        clientId: TENANT.clientId,
+        organizationId: TENANT.organizationId,
         memberId: 'member-1',
-        sub: ACTOR_ID,
-        type: 'member_qr',
-      } as any);
+      });
       memberRepo.findOne.mockResolvedValue(activeMember());
       const qb = makeQb(null);
       checkInRepo.createQueryBuilder.mockReturnValue(qb);
 
-      const newCheckIn = { id: 'ci-qr', clientId: 'client-1', memberId: 'member-1', metadata: null };
+      const newCheckIn = { id: 'ci-qr', organizationId: 'org-1', memberId: 'member-1', metadata: null };
       checkInRepo.create.mockReturnValue(newCheckIn);
       checkInRepo.save.mockResolvedValue(newCheckIn);
 
@@ -249,7 +246,7 @@ describe('CheckInsService', () => {
       const qb = makeQb(null);
       checkInRepo.createQueryBuilder.mockReturnValue(qb);
 
-      const newCheckIn = { id: 'ci-self', clientId: 'client-1', memberId: 'member-1', metadata: null };
+      const newCheckIn = { id: 'ci-self', organizationId: 'org-1', memberId: 'member-1', metadata: null };
       checkInRepo.create.mockReturnValue(newCheckIn);
       checkInRepo.save.mockResolvedValue(newCheckIn);
 

@@ -7,7 +7,7 @@ import { PlatformRole } from '../../common/decorators/roles.decorators';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, PlatformRoleGuard)
-@PlatformRole('super_admin')
+@PlatformRole('gym_admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

@@ -6,8 +6,8 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
 import { Identity } from './identity.entity';
+import { Organization } from './organization.entity';
 
 export type InviteStatus = 'pending' | 'accepted' | 'expired';
 export type InviteType = 'owner' | 'staff' | 'member';
@@ -20,8 +20,8 @@ export class Invite {
   @Column({ length: 64, unique: true })
   token: string;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
 
   @Column({ name: 'identity_id' })
   identityId: string;
@@ -51,7 +51,7 @@ export class Invite {
   @JoinColumn({ name: 'identity_id' })
   identity: Identity;
 
-  @ManyToOne(() => Client)
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 }

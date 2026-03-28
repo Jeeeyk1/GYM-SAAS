@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateStaffDto {
   @IsEmail()
@@ -10,10 +10,14 @@ export class CreateStaffDto {
   @IsString()
   lastName: string;
 
-  @IsIn(['gym_admin', 'front_desk'])
-  role: 'gym_admin' | 'front_desk';
+  @IsIn(['gym_owner', 'staff'])
+  role: 'gym_owner' | 'staff';
 
   @IsOptional()
   @IsString()
   title?: string;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
 }

@@ -2,14 +2,11 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ClientFeature } from './client-feature.entity';
 import { ClientProfile } from './client-profile.entity';
-import { Member } from './member.entity';
 
 export type ClientStatus = 'onboarding' | 'active' | 'suspended' | 'demo' | 'churned';
 export type ClientPlan = 'starter' | 'growth' | 'enterprise';
@@ -45,11 +42,4 @@ export class Client {
 
   @OneToOne(() => ClientProfile, (profile) => profile.client)
   profile: ClientProfile;
-
-  @OneToMany(() => ClientFeature, (cf) => cf.client)
-  clientFeatures: ClientFeature[];
-
-  @OneToMany(() => Member, (m) => m.client)
-  members: Member[];
-
 }
