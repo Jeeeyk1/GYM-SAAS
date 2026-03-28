@@ -24,7 +24,7 @@ export class ClientsService {
     const identityRoles = await this.identityRoleRepo.find({ where: { identityId } });
     if (identityRoles.length === 0) return [];
 
-    const clientIds = [...new Set(identityRoles.map((ir) => ir.clientId))];
+    const clientIds = [...new Set(identityRoles.map((ir) => ir.organizationId))];
     return this.clientRepo
       .createQueryBuilder('c')
       .leftJoinAndSelect('c.profile', 'profile')

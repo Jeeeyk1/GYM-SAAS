@@ -9,9 +9,8 @@ import { AuthService } from './auth.service';
 import { Identity } from '../../database/entities/identity.entity';
 import { Member } from '../../database/entities/member.entity';
 import { Staff } from '../../database/entities/staff.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
-import { FeatureDefinition } from '../../database/entities/feature-definition.entity';
 import { Role } from '../../database/entities/role.entity';
 import { IdentityRole } from '../../database/entities/identity-role.entity';
 import { InviteService } from './invite.service';
@@ -48,7 +47,7 @@ const PLATFORM_IDENTITY: Partial<Identity> = {
   email: 'admin@platform.com',
   passwordHash: 'hashed-password',
   accountType: AccountType.PLATFORM_ADMIN,
-  platformRole: 'super_admin' as any,
+  platformRole: 'gym_admin' as any,
 };
 
 describe('AuthService', () => {
@@ -73,9 +72,8 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(Identity), useValue: identityRepo },
         { provide: getRepositoryToken(Member), useValue: memberRepo },
         { provide: getRepositoryToken(Staff), useValue: makeRepo() },
-        { provide: getRepositoryToken(Client), useValue: makeRepo() },
+        { provide: getRepositoryToken(Organization), useValue: makeRepo() },
         { provide: getRepositoryToken(ClientFeature), useValue: makeRepo() },
-        { provide: getRepositoryToken(FeatureDefinition), useValue: makeRepo() },
         { provide: getRepositoryToken(Role), useValue: makeRepo() },
         { provide: getRepositoryToken(IdentityRole), useValue: identityRoleRepo },
         { provide: InviteService, useValue: { validate: jest.fn(), accept: jest.fn() } },
@@ -121,7 +119,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('returns tokens on successful login without gym context', async () => {
+    it('returns tokens on successful login without org context', async () => {
       const qb = makeQb(GYM_IDENTITY);
       identityRepo.createQueryBuilder.mockReturnValue(qb);
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
@@ -134,7 +132,7 @@ describe('AuthService', () => {
       expect(jwtService.sign).toHaveBeenCalledTimes(2);
     });
 
-    it('throws UnauthorizedException for expired member login with gym context', async () => {
+    it('throws UnauthorizedException for expired member login with org context', async () => {
       const qb = makeQb(GYM_IDENTITY);
       identityRepo.createQueryBuilder.mockReturnValue(qb);
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
@@ -148,7 +146,7 @@ describe('AuthService', () => {
       identityRoleRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.login({ email: 'member@gym.com', password: 'pass' }, 'client-1'),
+        service.login({ email: 'member@gym.com', password: 'pass' }, 'org-1'),
       ).rejects.toThrow(new UnauthorizedException('Membership has expired. Please renew to continue.'));
     });
 
@@ -162,14 +160,14 @@ describe('AuthService', () => {
         membershipExpiresAt: new Date(Date.now() - 86_400_000),
       };
       memberRepo.findOne.mockResolvedValue(expiredMember);
-      // Staff role exists
+      // Staff role exists (using new role name)
       identityRoleRepo.findOne.mockResolvedValue({
         id: 'ir-1',
-        role: { name: 'front_desk' },
+        role: { name: 'staff' },
       });
       identityRepo.update.mockResolvedValue({});
 
-      const result = await service.login({ email: 'member@gym.com', password: 'pass' }, 'client-1');
+      const result = await service.login({ email: 'member@gym.com', password: 'pass' }, 'org-1');
       expect(result.accessToken).toBe('mock-token');
     });
 
@@ -181,7 +179,7 @@ describe('AuthService', () => {
       memberRepo.findOne.mockResolvedValue({ id: 'm-1', membershipExpiresAt: null });
       identityRepo.update.mockResolvedValue({});
 
-      const result = await service.login({ email: 'member@gym.com', password: 'pass' }, 'client-1');
+      const result = await service.login({ email: 'member@gym.com', password: 'pass' }, 'org-1');
       expect(result.accessToken).toBe('mock-token');
     });
   });

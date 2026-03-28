@@ -1,392 +1,331 @@
-# GymSaaS — Project Context
-
-## What This Is
-
-Multi-tenant SaaS platform for gyms. A single platform serves many gyms. Each gym is a **Client** (tenant). All behavior, features, and config are scoped at the client level.
-
-**Business model:** The platform owner (super admin) onboards gyms. Each gym subscribes to a plan and gets access to features based on that plan. Gym owners manage their own staff and members through a web dashboard. Members interact primarily through a mobile app.
+# GymSaaS — Core System Reference
+Source of truth for architecture, conventions, and cross-app rules.
 
 ---
 
-## Monorepo Structure
+## 1. Overview
+
+GymSaaS is a multi-tenant SaaS platform for gym management.
+Each **Organization** represents a tenant gym brand.
+An organization may have multiple **Branches** (physical locations).
+
+**Business Model:**
+- Gyms subscribe to a plan: `basic`, `advanced`, or `enterprise`.
+- Plans set limits (member count, branch count, AI token budget).
+- The platform owner (`gym_admin`) provisions organizations manually — they create the org, set the plan, and the invite email fires automatically. No self-signup for gym owners.
+
+**Stack**
+
+| Layer | Technology |
+|---|---|
+| API | NestJS 10 |
+| Database | PostgreSQL 16 (TypeORM query builder only) |
+| Migrations | node-pg-migrate |
+| Web app | Next.js 14 App Router + Tailwind CSS |
+| Mobile app | Expo React Native |
+| Monorepo | Nx + pnpm workspaces |
+| Auth | JWT access (15 min) + refresh (7 days httpOnly cookie) |
+| Scheduling | @nestjs/schedule (cron jobs) |
+
+---
+
+## 2. Monorepo Layout
 
 ```
 monorepo/
 ├── apps/
-│   ├── api/          NestJS REST API — port 3000
-│   ├── web/          Next.js 14 admin dashboard — port 3001
-│   └── mobile/       Expo React Native member app
+│   ├── api/       # NestJS REST API (port 3000)
+│   ├── web/       # Next.js dashboard (port 3001)
+│   └── mobile/    # Expo mobile app
 ├── libs/
-│   ├── shared-types/ DTOs, interfaces, enums — imported by ALL apps
-│   ├── shared-utils/ Pure utility functions (deepMerge, date utils, member number)
-│   └── shared-config/ Feature keys, permission constants, API route constants
+│   ├── shared-types/   # DTOs, response shapes — single source of truth
+│   ├── shared-utils/   # Pure utilities (deepMerge, date utils, etc.)
+│   └── shared-config/  # Feature keys, PLAN_LIMITS, permission constants
 ├── docs/
-│   ├── Architecture.md   System architecture reference
-│   ├── progress/         Session progress notes
-│   └── revision/         Breaking change and refactor notes
-├── CLAUDE.md         This file — full context
-├── .claude/CLAUDE.md Technical implementation reference
-├── database.js       node-pg-migrate config
+│   ├── architecture/   # ERDs, diagrams, ADRs
+│   ├── progress/       # Session progress notes (YYYY-MM-DD_Progress.md)
+│   └── revision/       # Migration/changelog notes (one per major refactor)
 └── pnpm-workspace.yaml
 ```
 
 ---
 
-## Tech Stack
+## 3. Domain Model
 
-| Layer | Technology |
-|-------|-----------|
-| API framework | NestJS 10 |
-| Database | PostgreSQL 16 via TypeORM (query builder only) |
-| Migrations | node-pg-migrate — raw SQL files |
-| Auth | JWT access token (15m) + refresh token (7d httpOnly cookie) |
-| Scheduling | @nestjs/schedule (cron jobs) |
-| Web | Next.js 14 App Router + Tailwind CSS |
-| Mobile | Expo + React Native (Expo Router) |
-| Monorepo | Nx + pnpm workspaces |
-| Package manager | pnpm |
+### Core Multi-Tenant Entities
 
----
-
-## Business Flow — Gym Onboarding
-
-```
-1. Platform admin creates a gym via web dashboard
-   POST /admin/gyms  { slug, name, ownerEmail, ownerFirstName, ownerLastName, plan }
-   → Creates: client + client_profile + feature flags + owner staff record + role
-   → Returns: inviteToken (72h expiry)
-   → Sends activation email to ownerEmail with link: /activate?token=<inviteToken>
-
-2. Gym owner opens the activation link
-   → Web page at /activate?token=xxx
-   → Owner fills in: password (account creation)
-   → Calls POST /auth/accept-invite { token, password }
-   → Account activated, JWT returned, redirected to gym dashboard
-   → Role: GYM_OWNER scoped to that client
-
-3. Gym owner logs in at their gym
-   → POST /auth/login { email, password }
-   → x-gym-slug header identifies which gym's context to load
-   → JWT contains identityId; gym context resolved separately
-
-4. Owner invites staff via web dashboard
-   → POST /staff { email, firstName, lastName, role }
-   → Email sent to staff with activation link
-   → Staff activates, role: FRONT_DESK or GYM_ADMIN scoped to that gym
-
-5. Owner creates members (or members self-register if feature enabled)
-   → POST /members { email, firstName, lastName, membershipType, membershipExpiresAt }
-   → Welcome email sent with activation link
-   → Member activates via mobile app or web
-```
-
-**Key principle:** No account is created without an invite. All accounts originate from an invite token. There is no public self-registration except via the `member_self_registration` feature flag.
-
----
-
-## Identity and Role Design
-
-### Identity vs Member vs Staff
-
-One `Identity` (auth record) can be a staff member at Gym A and a member at Gym B simultaneously. The identity holds credentials. Member and Staff records hold the gym-scoped profile.
-
-```
-Identity (identities table)            → identity.entity.ts
-  - email, passwordHash, provider, isVerified
-  - accountType: GYM_USER | PLATFORM_ADMIN
-  - platformRole: super_admin | platform_admin | null
-
-Member (members table)                 → member.entity.ts
-  - clientId, identityId → links to gym + identity
-  - firstName, lastName, membershipType, loyaltyPoints, status
-  - membershipExpiresAt, membershipStartedAt
-
-Staff (staff table)                    → staff.entity.ts
-  - clientId, identityId → links to gym + identity
-  - firstName, lastName, title, status
-```
-
-### Role-Based Access Control (RBAC)
-
-**Platform level** (checked by PlatformRoleGuard):
-| Role | Access |
-|------|--------|
-| `super_admin` | Full access to /admin/* endpoints |
-| `platform_admin` | Read access to platform data |
-
-**Gym level** (checked by GymRoleGuard):
-| Role | Access |
-|------|----------------|
-| `gym_owner` | Full gym management: staff, members, settings, features |
-| `gym_admin` | Same as owner except cannot delete gym or change plan |
-| `front_desk` | Check-in members, view member list (read-only) |
-| `member` | Self check-in, view own history, own profile |
-
----
-
-## Check-in System
-
-Three check-in scenarios:
-- `manual` — staff looks up member by name/number, sends `POST /checkins { memberId, method: 'manual' }`
-- `qr_staff_scan` — staff scans member QR, sends `POST /checkins { qrToken, method: 'qr_staff_scan' }`
-- `qr_self_scan` — member scans gym QR, sends `POST /checkins { method: 'qr_self_scan' }` with their own JWT
-
-### Check-in Behavior System
-After a check-in is recorded, a registry of behaviors runs:
-- `BaseAttendanceBehavior` — always runs, logs attendance
-- `LoyaltyPointsBehavior` — runs if `checkin.loyalty_points` feature enabled
-- `WelcomeMessageBehavior` — runs if `checkin.welcome_message` feature enabled
-
-Adding a new behavior = new class implementing `ICheckInBehavior` + one line in the module. Outcomes stored in `check_ins.metadata`.
-
----
-
-## Feature System
-
-Every gym has feature flags backed by three tables:
-```
-feature_definitions        → feature-definition.entity.ts
-client_features            → client-feature.entity.ts
-client_feature_overrides   → client-feature-override.entity.ts
-```
-
-At runtime: `deepMerge(featureDefinition.defaultConfig, clientOverride.config)` produces the effective config.
-
-Feature keys live in `libs/shared-config/src/feature.keys.ts`. **Always use those constants, never hardcode strings.**
-
-`FeatureResolverService` (in CheckInsModule, exported) caches resolved feature maps per clientId for 60 seconds. Call `featureResolver.invalidate(clientId)` after any feature update.
-
----
-
-## API Response Format
-
-All successful responses are wrapped by `ResponseInterceptor`:
-```json
-{ "data": <payload>, "meta": { "timestamp": "...", "path": "..." } }
-```
-
-All errors are formatted by `HttpExceptionFilter`:
-```json
-{ "error": { "statusCode": 400, "message": "...", "timestamp": "...", "path": "..." } }
-```
-
-The web/mobile Axios client auto-unwraps the envelope — `response.data` always contains the raw payload.
-
----
-
-## Multi-Tenancy Rules (Non-Negotiable)
-
-- Every query on tenant data MUST filter by `clientId`
-- NEVER take `clientId` from the request body — always from `req.tenantContext.clientId`
-- Use `@CurrentTenant()` decorator in controllers
-- Tenant is resolved by `TenantContextMiddleware` from the `x-gym-slug` header
-- Every tenant table MUST have `client_id UUID NOT NULL` with an index
-
----
-
-## Shared Libraries — Source of Truth
-
-`libs/shared-types` is the single source of truth for all API response shapes.
-
-Rules:
-- Adding a new API response shape → define it in `shared-types` FIRST, then import in `apps/api` and `apps/web`/`apps/mobile`
-- Never redefine types in apps that already exist in shared-types
-- `shared-utils` package.json `main` must point to `./src/index.js` (compiled JS), not `.ts`
-
----
-
-## Entity File Structure
-
-**One entity per file.** Each file in `apps/api/src/database/entities/` contains exactly one `@Entity()` class:
-
-| File | Entity | Table |
-|------|--------|-------|
-| `client.entity.ts` | Client | clients |
-| `client-profile.entity.ts` | ClientProfile | client_profiles |
-| `feature-definition.entity.ts` | FeatureDefinition | feature_definitions |
-| `client-feature.entity.ts` | ClientFeature | client_features |
-| `client-feature-override.entity.ts` | ClientFeatureOverride | client_feature_overrides |
-| `identity.entity.ts` | Identity | identities |
-| `member.entity.ts` | Member | members |
-| `staff.entity.ts` | Staff | staff |
-| `role.entity.ts` | Role | roles |
-| `identity-role.entity.ts` | IdentityRole | identity_roles |
-| `checkin.entity.ts` | CheckIn | check_ins |
-| `audit-log.entity.ts` | AuditLog | audit_logs |
-| `invite.entity.ts` | Invite | invites |
-| `member.privacy.settings.entity.ts` | MemberPrivacySettings | member_privacy_settings |
-
----
-
-## API Module Structure
-
-```
-apps/api/src/modules/
-├── auth/         Login, refresh, logout, accept-invite, admin-login, self-register
-├── admin/        Platform admin: create/list gyms (super_admin only)
-├── clients/      Gym profile: my-gyms, get by slug, update profile
-├── members/      Member CRUD, privacy settings, gym context, membership scheduler
-├── staff/        Staff CRUD with invite flow
-├── checkins/     Check-in/out, QR, active board, history, behavior pipeline
-├── features/     Toggle and configure per-gym feature flags
-└── email/        Transactional email service (global module)
-```
-
-Planned:
-- `chat/` — gym-wide messaging (Phase 1.5, DB tables exist)
-
----
-
-## Current Build Status
-
-### Done (Phase 1.1 – 1.4)
-- Database schema (9 migrations applied, including membership expiry)
-- Shared types, utils, config libraries
-- Auth module: login, refresh, logout, accept-invite, admin-login, self-register
-- Admin module: gym creation (transactional), gym list
-- Clients module: my-gyms, profile update
-- Members module: CRUD, privacy settings, gym context, membership expiry enforcement
-- Staff module: CRUD with invite flow
-- Check-ins module: all 3 methods, checkout, QR, active board, history, auto-checkout cron, behavior pipeline
-- Features module: GET /features, PATCH /features/:key with cache invalidation
-- Email module: gym owner activation, staff invitation, member welcome, membership expiry reminders
-- Membership expiry: blocked at login, at check-in, and via GymRoleGuard for all gym-scoped endpoints
-- Entity refactor: one entity per file
-- HttpExceptionFilter: consistent error envelope
-- ResponseInterceptor: consistent success envelope `{ data, meta }`
-
-### Planned
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 1.5 | Unit tests for critical services (AuthService, GymRoleGuard, CheckInsService) | Next |
-| 1.6 | Web dashboard (Next.js): login, gym setup, members, check-ins, staff | Next |
-| 1.7 | Community chat (DB exists, service not built) | Planned |
-| 1.8 | Mobile app: login, QR scanner, check-in history, profile | Planned |
-
----
-
-## Coding Standards
-
-### NestJS
-- Controllers handle HTTP only — no business logic, no DB queries
-- Services handle all business logic with explicit return types
-- DTOs in each module's `dto/` folder with class-validator decorators
-- One module per domain — no cross-module service injection unless exported
-- Use `@CurrentTenant()` for tenant context, `@CurrentUser()` for JWT payload
-- Guards only make access decisions — no business logic or DB queries inside guards
-
-### Entities
-- **One entity class per file** — never put multiple `@Entity()` classes in one file
-- Entity file naming: `<table-name-singular>.entity.ts`
-- Export type aliases (`MemberStatus`, `StaffStatus`) from the same file as the entity that uses them
-
-### Database
-- Never use TypeORM `synchronize: true`
-- Never modify existing migration files — always create new ones
-- All migration SQL must be idempotent (`IF NOT EXISTS` everywhere)
-- Run `pnpm migrate:up` twice to verify idempotency
-- Migration filename format: `YYYYMMDDNNNNNn_description.sql`
-- Use TypeORM query builder — avoid `dataSource.query()` raw SQL in services and guards
-
-### TypeScript
-- All service methods have explicit return types
-- No `any` unless absolutely unavoidable
-- Use types from `@gym-saas/shared-types` — never redefine in apps
-
-### Security
-- Never log or return `passwordHash`
-- Never expose internal IDs in error messages
-- Never take `clientId` from request body
-- JWT tokens: access 15m, refresh 7d httpOnly cookie, QR token 30d
-
----
-
-## Testing Standards
-
-### Philosophy
-- **Unit tests** — services with mocked repositories (Jest + `@nestjs/testing`)
-- **Integration tests** — controllers via NestJS TestingModule with real service, mocked DB
-- Test file location: `<filename>.spec.ts` in the same directory as the file under test
-
-### Priority order (highest value first)
-1. `GymRoleGuard` — 100% branch coverage (security-critical)
-2. `AuthService` — login, expiry check, token generation
-3. `CheckInsService` — all 3 check-in methods, behavior pipeline
-4. `MembersService` — create (expiry field handling), update
-5. `FeatureResolverService` — cache logic, merge logic
-
-### Pattern for service unit tests
-```typescript
-describe('MembersService', () => {
-  let service: MembersService;
-  let memberRepo: jest.Mocked<Repository<Member>>;
-
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      providers: [
-        MembersService,
-        { provide: getRepositoryToken(Member), useValue: createMockRepo() },
-        // ... other mocked deps
-      ],
-    }).compile();
-
-    service = module.get(MembersService);
-    memberRepo = module.get(getRepositoryToken(Member));
-  });
-
-  it('should throw ForbiddenException when member is expired', async () => { ... });
-});
-```
-
-### Coverage targets
-- Services: ≥ 70% line coverage, ≥ 80% branch coverage
-- Guards: 100% branch coverage
-- Run tests: `pnpm test` (unit), coverage: `pnpm test --coverage`
-
----
-
-## Documentation
-
-When making significant changes, update the appropriate doc:
-
-| What changed | Where to document |
+| Table | Purpose |
 |---|---|
-| New API endpoint | `.claude/CLAUDE.md` endpoint inventory |
-| New entity or table | `CLAUDE.md` entity table + `docs/Architecture.md` |
-| Breaking API change | `docs/revision/YYYY-MM-DD_<description>.md` |
-| Architecture decision | `docs/Architecture.md` + ADR section |
-| Session progress | `docs/progress/YYYY-MM-DD_Progress.md` |
+| `organizations` | Tenant entity (gym brand). |
+| `organization_profiles` | Branding, contact info, logo, timezone. |
+| `branches` | Physical gyms under an organization. |
+| `subscriptions` | Plan type, limits, expiry, renewal. |
+
+### Identity & Access
+
+| Table | Purpose |
+|---|---|
+| `identities` | Auth credentials. `platform_role` column = `gym_admin` or `null`. |
+| `identity_roles` | Links identity → role → org → branch. `branch_id NULL` = org-wide scope. |
+| `roles` | Gym-level roles: `org_owner`, `gym_owner`, `staff`, `member`. |
+| `invites` | Invite token flow for onboarding owners, staff, and members. |
+
+> Platform admins (`gym_admin`) are identified via `identity.platform_role` — they do **not** have a row in `identity_roles`.
+
+### Members & Staff
+
+| Table | Purpose |
+|---|---|
+| `members` | Gym members (`organization_id` + optional `branch_id` as home branch). |
+| `staff` | Staff profiles tied to identities; scoped per branch. |
+| `member_privacy_settings` | Controls leaderboard / activity visibility. |
+
+### Operations
+
+| Table | Purpose |
+|---|---|
+| `check_ins` | Check-in/out events; `method` = manual / qr_self / qr_staff. `branch_id` recorded. |
+| `announcements` | Org/branch-wide messages shown to members and staff. |
+| `audit_logs` | Append-only system events. |
+
+### Feature System
+
+| Table | Purpose |
+|---|---|
+| `feature_definitions` | Platform catalog of all features. |
+| `client_features` | Per-org on/off toggle. |
+| `client_feature_overrides` | Custom config deep-merged over defaults. |
 
 ---
 
-## Running the Project
+## 4. Role Hierarchy
+
+### Platform Level
+Stored in `identity.platform_role` — NOT in `identity_roles`.
+
+| Value | Who | Access |
+|---|---|---|
+| `gym_admin` | Platform owner + support team | Full access to `/admin/*`, all orgs |
+| `null` | Everyone else | No platform access |
+
+### Gym Level
+Stored in `identity_roles` with `organization_id` + `branch_id`.
+
+| Role | `branch_id` in identity_roles | What they can do |
+|---|---|---|
+| `org_owner` | `NULL` (org-wide) | See and manage ALL branches. Created automatically when platform admin provisions a gym. |
+| `gym_owner` | specific branch UUID | See and manage their assigned branch only. |
+| `staff` | specific branch UUID | Operational access at their branch: check-ins, members, announcements. |
+| `member` | `NULL` (org-wide) | Check in at any branch, view announcements, AI chat, community chat. |
+
+**Key rule:** `branch_id = NULL` means org-wide scope. `branch_id = <uuid>` means branch-scoped. Both `gym_owner` and `staff` must always have a branch assigned. `org_owner` and `member` never have a branch in their role row.
+
+---
+
+## 5. API Request Headers
+
+| Header | Required by | Purpose |
+|---|---|---|
+| `Authorization: Bearer <token>` | All protected endpoints | JWT access token |
+| `x-org-slug` | All gym-scoped endpoints | Identifies the organization (tenant) |
+| `x-branch-id` | Branch-scoped roles (`gym_owner`, `staff`) | Identifies the active branch |
+
+**Branch scoping rules:**
+- `org_owner` — omits `x-branch-id`. API returns org-wide data.
+- `gym_owner` / `staff` — MUST send `x-branch-id`. Guard rejects requests without it.
+- `member` — omits `x-branch-id`. Members are org-wide.
+- `gym_admin` (platform) — omits both; accesses all orgs via `/admin/*`.
+
+**Never** accept `organization_id` or `branch_id` from request body — always from resolved context.
+
+---
+
+## 6. Subscription Plans & Limits
+
+Plan names: `basic` | `advanced` | `enterprise`
+
+Limits are defined in **`libs/shared-config/src/plan.limits.ts`** — a single constant to update when numbers change.
+
+```typescript
+// libs/shared-config/src/plan.limits.ts
+export const PLAN_LIMITS = {
+  basic:      { maxMembers: 100,  maxBranches: 1,  aiTokenLimit: 0       },
+  advanced:   { maxMembers: 500,  maxBranches: 3,  aiTokenLimit: 100_000 },
+  enterprise: { maxMembers: -1,   maxBranches: -1, aiTokenLimit: 1_000_000 },
+} as const;
+// -1 = unlimited
+```
+
+Enforcement happens at service layer via `SubscriptionService.assertLimit(orgId, limitKey)`.
+
+**Feature config formula:**
+```typescript
+effectiveConfig = deepMerge(featureDefinition.defaultConfig, orgOverride.config)
+```
+
+`FeatureResolverService` caches resolved feature states per org for 60 seconds.
+Call `featureResolver.invalidate(orgId)` after any feature or override update.
+
+---
+
+## 7. API Module Structure
+
+| Module | Scope | Purpose |
+|---|---|---|
+| `auth` | Global | Login, refresh, accept-invite, logout, self-register |
+| `admin` | Platform | Provision orgs, assign plans, list orgs |
+| `organizations` | Tenant | Org profile CRUD |
+| `branches` | Tenant | Branch CRUD + settings |
+| `staff` | Tenant | Invite/manage staff (branch-scoped) |
+| `members` | Tenant | Member CRUD, privacy settings |
+| `checkins` | Tenant | Check-in/out, QR, behavior pipeline |
+| `features` | Tenant | Toggle and configure per-org feature flags |
+| `announcements` | Tenant | Post/read announcements (planned) |
+| `chat` | Tenant | Community messaging (planned) |
+
+**Controller pattern:**
+```
+Controller → Service → Repository (QueryBuilder)
+```
+- Controllers: HTTP only, no business logic.
+- Services: all business logic with explicit return types.
+- DTOs: `class-validator` decorators, one file per operation.
+
+---
+
+## 8. Check-in System
+
+Three methods:
+
+| Method | Who | Body | Resolution |
+|---|---|---|---|
+| `manual` | Staff | `memberId` | Direct lookup, verify org + branch |
+| `qr_staff_scan` | Staff (scan member QR) | `qrToken` | Validate JWT, extract `memberId + orgId` |
+| `qr_self_scan` | Member (scan gym QR) | none | JWT `sub` → `identityId → member` lookup |
+
+**QR codes and branches:**
+- Gym QR (posted at branch): payload includes `{ type: "gym_checkin", orgSlug, branchId }`. Check-in is attributed to that branch automatically.
+- Member personal QR: generated per-member. If org has multiple branches, member selects branch in the mobile app before generating.
+- QR tokens valid 30 days.
+
+**Behavior pipeline** (runs after every check-in):
+- `BaseAttendanceBehavior` — always
+- `LoyaltyPointsBehavior` — if feature `checkin.loyalty_points` enabled
+- `WelcomeMessageBehavior` — if feature `checkin.welcome_message` enabled
+
+Outcomes stored in `check_ins.metadata`.
+
+---
+
+## 9. Security Rules
+
+- Passwords: bcrypt, never returned in any response.
+- Access tokens: 15 min. Refresh tokens: 7 days, httpOnly cookie.
+- Never log or return `password_hash`.
+- Never expose internal UUIDs in error messages.
+- Never take `organization_id` or `branch_id` from request body.
+- No raw SQL in services or guards — TypeORM query builder only.
+- No `synchronize: true` in TypeORM config.
+- No multiple `@Entity()` per file.
+- JWT refresh tokens stored in httpOnly cookie only (not localStorage, not AsyncStorage).
+
+---
+
+## 10. Coding Standards
+
+- Services: explicit return types on all methods.
+- No `any` unless absolutely unavoidable.
+- Use types from `@gym-saas/shared-types` — never redefine in apps.
+- Entities: one `@Entity()` class per file, named `<table-name-singular>.entity.ts`.
+- New API response shape → define in `shared-types` FIRST.
+- New plan limits → update `shared-config/src/plan.limits.ts` ONLY. Never hardcode numbers.
+
+---
+
+## 11. Testing Standards
+
+| Type | Goal | Framework |
+|---|---|---|
+| Unit | Mocked repos, cover business logic | Jest + @nestjs/testing |
+| Integration | TestingModule, real services, fake DB | Jest |
+
+Coverage targets: ≥70% lines, ≥80% branches.
+
+Priority (security-critical first):
+1. `GymRoleGuard` — 100% branch coverage
+2. `AuthService`
+3. `CheckInsService`
+4. `MembersService`
+5. `FeatureResolverService`
+
+---
+
+## 12. Documentation Rules
+
+| Change | Where |
+|---|---|
+| New endpoint | `docs/services/<module>.md` |
+| Schema migration | `docs/revision/<date>_<topic>.md` |
+| Architecture decision | `docs/architecture/ADR/*.md` |
+| Session progress / phase plan | `docs/progress/YYYY-MM-DD_Progress.md` |
+
+---
+
+## 13. Development Commands
 
 ```bash
-pnpm docker:up          # Start Postgres + Redis
-pnpm migrate:up         # Run all pending migrations
-pnpm seed               # Seed feature definitions + roles
-pnpm seed:admin         # Insert platform admin account (run once)
-pnpm api                # Start API dev server (port 3000)
-pnpm web                # Start web dev server (port 3001)
-pnpm mobile             # Start Expo
-pnpm test               # Run unit tests
+pnpm docker:up        # Start Postgres + Redis
+pnpm migrate:up       # Run pending migrations (run twice to verify idempotency)
+pnpm seed             # Insert feature definitions + system roles
+pnpm seed:admin       # Create platform admin account (once)
+pnpm api              # Run API dev server (port 3000)
+pnpm web              # Run web dashboard (port 3001)
+pnpm mobile           # Run Expo
+pnpm test --coverage  # Run tests with coverage
 ```
 
 ---
 
-## Do NOT
+## 14. Never Do
 
-- Modify existing migration files — create new ones
-- Use `synchronize: true` in TypeORM
-- Take `client_id` from request body
-- Add business logic to controllers or guards
-- Put multiple `@Entity()` classes in one file
-- Use `dataSource.query()` raw SQL in services or guards (use query builder)
-- Expose `passwordHash` in any response
-- Hardcode role UUIDs — always query roles by name
-- Duplicate types that exist in `shared-types`
-- Use `localStorage` or `AsyncStorage` for tokens in the web/mobile apps
-- Add a public registration endpoint (all accounts come from invites)
-- Import circularly between modules
-- Skip writing `.spec.ts` files for new services
+- Modify already-applied migration files — create new ones.
+- Use `TypeORM synchronize: true`.
+- Take `organization_id` or `branch_id` from request body.
+- Put business logic in guards or controllers.
+- Expose `password_hash` or internal UUIDs in any response.
+- Re-define types that exist in `shared-types`.
+- Store tokens in localStorage or AsyncStorage.
+- Add public self-registration (all accounts come from invites).
+- Import circularly between domain modules.
+- Hardcode plan limit numbers — always use `PLAN_LIMITS` from `shared-config`.
+
+---
+
+## 15. Refactor Tracker
+
+| Refactor | Status | Notes |
+|---|---|---|
+| Entity-per-file | ✅ Done | |
+| Org/branch schema (migrations 010-012) | ✅ Written, pending apply | Apply before any code refactor |
+| Plan names basic/advanced/enterprise | 🔲 Migration needed (013) | Current code still has starter/growth |
+| Role rename: front_desk → staff | 🔲 Migration needed (014) | Seed script update too |
+| identity_roles: add branch_id column | 🔲 Migration needed (015) | Enables branch-scoped roles |
+| platform_role: super_admin → gym_admin | 🔲 Migration needed (016) | CHECK constraint update on identities |
+| Entity files: clientId → organizationId | 🔲 Phase 3.1 | 10 entity files |
+| Services/guards: clientId → organizationId | 🔲 Phase 3.2 | ~115 references in 18 files |
+| clients module → organizations module | 🔲 Phase 3.3 | Rename + new endpoints |
+| TenantContextMiddleware: x-org-slug + x-branch-id | 🔲 Phase 3.4 | |
+| GymRoleGuard: branch-aware logic | 🔲 Phase 3.5 | New role hierarchy |
+| Branches module | 🔲 Phase 3.6 | CRUD + branch context |
+| Subscription enforcement | 🔲 Phase 3.7 | maxMembers, maxBranches via PLAN_LIMITS |
+| PLAN_LIMITS config constant | 🔲 Phase 3.0 | Do first, before any enforcement |
+| Announcements module | 🔲 Phase 4.1 | DB table exists |
+| Community chat module | 🔲 Phase 4.2 | DB tables exist |
+| AI fitness chat | 🔲 Phase 4.3 | New DB tables needed |
+| Member goals | 🔲 Phase 4.4 | New DB tables needed |
+| Web dashboard (Next.js) | 🔲 Phase 5 | After API stable |
+| Mobile app (Expo) | 🔲 Phase 6 | After web stable |
+
+---
+
+*This file is authoritative. Long-form explanations belong in `/docs/revision/` or `/docs/architecture/`. Session progress belongs in `/docs/progress/`.*

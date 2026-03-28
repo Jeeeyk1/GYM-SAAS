@@ -3,10 +3,11 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Client } from './client.entity';
+import { Organization } from './organization.entity';
 
 export type StaffStatus = 'active' | 'inactive' | 'invited';
 
@@ -15,8 +16,11 @@ export class Staff {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'client_id' })
-  clientId: string;
+  @Column({ name: 'organization_id' })
+  organizationId: string;
+
+  @Column({ name: 'branch_id', nullable: true, type: 'varchar' })
+  branchId: string | null;
 
   @Column({ name: 'identity_id', type: 'varchar', length: 255 })
   identityId: string;
@@ -39,6 +43,7 @@ export class Staff {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-  @JoinColumn({ name: 'client_id' })
-  client: Client;
+  @ManyToOne(() => Organization)
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization;
 }

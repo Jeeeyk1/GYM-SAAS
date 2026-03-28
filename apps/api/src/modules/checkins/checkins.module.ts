@@ -40,7 +40,6 @@ import { ClientFeatureOverride } from '../../database/entities/client-feature-ov
     LoyaltyPointsBehavior,
     WelcomeMessageBehavior,
     GymRoleGuard,
-    // Registry: inject an ordered array into CheckInsService
     {
       provide: CHECKIN_BEHAVIORS,
       useFactory: (

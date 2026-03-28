@@ -7,7 +7,7 @@ import { Member } from '../../database/entities/member.entity';
 interface MemberQrPayload {
   type: 'member_checkin';
   memberId: string;
-  clientId: string;
+  organizationId: string;
 }
 
 @Injectable()
@@ -23,7 +23,7 @@ export class QrService {
 
   async generateMemberQr(
     memberId: string,
-    clientId: string,
+    organizationId: string,
     memberRepo: Repository<Member>,
   ): Promise<{ token: string; expiresAt: Date }> {
     // Load qrToken fields (select: false by default, so we add them explicitly)
@@ -45,7 +45,7 @@ export class QrService {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
     const token = this.jwtService.sign(
-      { type: 'member_checkin', memberId, clientId } satisfies MemberQrPayload,
+      { type: 'member_checkin', memberId, organizationId } satisfies MemberQrPayload,
       { secret: this.qrSecret, expiresIn: '30d' },
     );
 
@@ -54,7 +54,7 @@ export class QrService {
     return { token, expiresAt };
   }
 
-  validateMemberQr(token: string): { memberId: string; clientId: string } {
+  validateMemberQr(token: string): { memberId: string; organizationId: string } {
     try {
       const payload = this.jwtService.verify<MemberQrPayload>(token, {
         secret: this.qrSecret,
@@ -64,7 +64,7 @@ export class QrService {
         throw new UnauthorizedException('Invalid QR token type');
       }
 
-      return { memberId: payload.memberId, clientId: payload.clientId };
+      return { memberId: payload.memberId, organizationId: payload.organizationId };
     } catch {
       throw new UnauthorizedException('Invalid or expired QR token');
     }

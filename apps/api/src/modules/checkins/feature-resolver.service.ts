@@ -25,18 +25,18 @@ export class FeatureResolverService {
     private readonly overrideRepo: Repository<ClientFeatureOverride>,
   ) {}
 
-  async resolve(clientId: string): Promise<FeatureMap> {
-    const cached = this.cache.get(clientId);
+  async resolve(organizationId: string): Promise<FeatureMap> {
+    const cached = this.cache.get(organizationId);
     if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
       return cached.result;
     }
 
     const features = await this.clientFeatureRepo.find({
-      where: { clientId },
+      where: { organizationId },
       relations: ['featureDefinition'],
     });
 
-    const overrides = await this.overrideRepo.find({ where: { clientId } });
+    const overrides = await this.overrideRepo.find({ where: { organizationId } });
     const overrideByFeatureId = new Map(overrides.map((o) => [o.featureId, o.config]));
 
     const result: FeatureMap = new Map();
@@ -52,12 +52,12 @@ export class FeatureResolverService {
       });
     }
 
-    this.cache.set(clientId, { result, cachedAt: Date.now() });
+    this.cache.set(organizationId, { result, cachedAt: Date.now() });
     return result;
   }
 
   /** Call this after a feature override is updated to force a cache refresh. */
-  invalidate(clientId: string): void {
-    this.cache.delete(clientId);
+  invalidate(organizationId: string): void {
+    this.cache.delete(organizationId);
   }
 }

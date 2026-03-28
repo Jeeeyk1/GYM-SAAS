@@ -26,7 +26,7 @@ export class CheckInsController {
 
   @Post('checkins')
   @HttpCode(HttpStatus.CREATED)
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk', 'member')
+  @GymRoles('org_owner', 'gym_owner', 'staff', 'member')
   checkIn(
     @Body() dto: CheckInDto,
     @CurrentTenant() tenant: TenantContext,
@@ -37,7 +37,7 @@ export class CheckInsController {
 
   @Post('checkins/:checkInId/checkout')
   @HttpCode(HttpStatus.OK)
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   checkOut(
     @Param('checkInId', ParseUUIDPipe) checkInId: string,
     @CurrentTenant() tenant: TenantContext,
@@ -46,7 +46,7 @@ export class CheckInsController {
   }
 
   @Get('checkins')
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   getHistory(
     @Query() query: CheckInQueryDto,
     @CurrentTenant() tenant: TenantContext,
@@ -55,19 +55,19 @@ export class CheckInsController {
   }
 
   @Get('checkins/active-members')
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   getActiveMembers(@CurrentTenant() tenant: TenantContext) {
     return this.checkInsService.getActiveMembers(tenant);
   }
 
   @Get('checkins/gym-qr')
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   getGymQr(@CurrentTenant() tenant: TenantContext) {
     return this.checkInsService.getGymQr(tenant);
   }
 
   @Get('members/:memberId/qr')
-  @GymRoles('gym_owner', 'gym_admin', 'front_desk')
+  @GymRoles('org_owner', 'gym_owner', 'staff')
   getMemberQr(
     @Param('memberId', ParseUUIDPipe) memberId: string,
     @CurrentTenant() tenant: TenantContext,

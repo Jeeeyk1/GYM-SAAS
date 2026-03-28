@@ -10,8 +10,8 @@ export class AuditLog {
   @PrimaryColumn({ type: 'bigint' })
   id: number;
 
-  @Column({ name: 'client_id', nullable: true, length: 255, type: 'varchar' })
-  clientId: string | null;
+  @Column({ name: 'organization_id', nullable: true, length: 255, type: 'varchar' })
+  organizationId: string | null;
 
   @Column({ name: 'actor_id', nullable: true, length: 255, type: 'varchar' })
   actorId: string | null;

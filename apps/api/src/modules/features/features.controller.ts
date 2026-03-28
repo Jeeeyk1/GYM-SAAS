@@ -9,13 +9,13 @@ import { UpdateFeatureDto } from './dto/update-feature.dto';
 
 @Controller('features')
 @UseGuards(JwtAuthGuard, GymRoleGuard)
-@GymRoles('gym_owner', 'gym_admin')
+@GymRoles('org_owner', 'gym_owner')
 export class FeaturesController {
   constructor(private readonly featuresService: FeaturesService) {}
 
   @Get()
   list(@CurrentTenant() tenant: TenantContext) {
-    return this.featuresService.listFeatures(tenant.clientId);
+    return this.featuresService.listFeatures(tenant.organizationId);
   }
 
   @Patch(':key')
@@ -24,6 +24,6 @@ export class FeaturesController {
     @CurrentTenant() tenant: TenantContext,
     @Body() dto: UpdateFeatureDto,
   ) {
-    return this.featuresService.updateFeature(tenant.clientId, key, dto);
+    return this.featuresService.updateFeature(tenant.organizationId, key, dto);
   }
 }

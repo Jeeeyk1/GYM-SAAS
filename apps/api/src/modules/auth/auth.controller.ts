@@ -26,7 +26,7 @@ export class AuthController {
     @CurrentTenant() tenant: TenantContext | undefined,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken, refreshToken } = await this.authService.login(dto, tenant?.clientId);
+    const { accessToken, refreshToken } = await this.authService.login(dto, tenant?.organizationId);
     res.cookie('refresh_token', refreshToken, REFRESH_COOKIE);
     return { accessToken };
   }
@@ -42,9 +42,9 @@ export class AuthController {
   @Post('accept-invite')
   @HttpCode(HttpStatus.OK)
   async acceptInvite(@Body() dto: AcceptInviteDto, @Res({ passthrough: true }) res: Response) {
-    const { accessToken, refreshToken, gymSlug } = await this.authService.acceptInvite(dto);
+    const { accessToken, refreshToken, orgSlug } = await this.authService.acceptInvite(dto);
     res.cookie('refresh_token', refreshToken, REFRESH_COOKIE);
-    return { accessToken, gymSlug };
+    return { accessToken, orgSlug };
   }
 
   @Post('register/:gymSlug')
@@ -54,7 +54,7 @@ export class AuthController {
     @CurrentTenant() tenant: TenantContext,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken, refreshToken } = await this.authService.selfRegister(dto, tenant.clientId);
+    const { accessToken, refreshToken } = await this.authService.selfRegister(dto, tenant.organizationId);
     res.cookie('refresh_token', refreshToken, REFRESH_COOKIE);
     return { accessToken };
   }

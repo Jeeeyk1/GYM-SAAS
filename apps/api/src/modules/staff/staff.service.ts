@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Staff } from '../../database/entities/staff.entity';
 import { Identity } from '../../database/entities/identity.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { IdentityRole } from '../../database/entities/identity-role.entity';
 import { Role } from '../../database/entities/role.entity';
 import { InviteService } from '../auth/invite.service';
@@ -25,8 +25,8 @@ export class StaffService {
     private readonly staffRepo: Repository<Staff>,
     @InjectRepository(Identity)
     private readonly identityRepo: Repository<Identity>,
-    @InjectRepository(Client)
-    private readonly clientRepo: Repository<Client>,
+    @InjectRepository(Organization)
+    private readonly orgRepo: Repository<Organization>,
     @InjectRepository(IdentityRole)
     private readonly identityRoleRepo: Repository<IdentityRole>,
     @InjectRepository(Role)
@@ -36,7 +36,7 @@ export class StaffService {
   ) {}
 
   async createStaff(
-    clientId: string,
+    organizationId: string,
     dto: CreateStaffDto,
     invitedByIdentityId: string,
   ): Promise<{ staff: Staff; inviteToken: string }> {
@@ -47,15 +47,15 @@ export class StaffService {
       );
     }
 
-    const existing = await this.staffRepo.findOne({ where: { identityId: identity.id, clientId } });
+    const existing = await this.staffRepo.findOne({ where: { identityId: identity.id, organizationId } });
     if (existing) throw new ConflictException('Staff member already exists for this gym');
 
-    const role = await this.roleRepo.findOne({ where: { name: dto.role, clientId } });
+    const role = await this.roleRepo.findOne({ where: { name: dto.role, organizationId } });
     if (!role) throw new NotFoundException(`Role "${dto.role}" not found for this gym`);
 
     const staff = await this.staffRepo.save(
       this.staffRepo.create({
-        clientId,
+        organizationId,
         identityId: identity.id,
         firstName: dto.firstName,
         lastName: dto.lastName,
@@ -68,21 +68,22 @@ export class StaffService {
       this.identityRoleRepo.create({
         identityId: identity.id,
         roleId: role.id,
-        clientId,
+        organizationId,
+        branchId: dto.branchId ?? null,
         assignedBy: null,
       }),
     );
 
     const invite = await this.inviteService.create({
-      clientId,
+      organizationId,
       identityId: identity.id,
       role: dto.role,
       type: 'staff',
       invitedBy: invitedByIdentityId,
     });
 
-    const gym = await this.clientRepo.findOne({ where: { id: clientId }, select: ['id', 'name'] });
-    const gymName = gym?.name ?? 'the gym';
+    const org = await this.orgRepo.findOne({ where: { id: organizationId }, select: ['id', 'name'] });
+    const gymName = org?.name ?? 'the gym';
 
     try {
       await this.emailService.sendStaffInvitation({
@@ -99,28 +100,28 @@ export class StaffService {
     return { staff, inviteToken: invite.token };
   }
 
-  async listStaff(clientId: string): Promise<Staff[]> {
+  async listStaff(organizationId: string): Promise<Staff[]> {
     return this.staffRepo
       .createQueryBuilder('s')
-      .where('s.client_id = :clientId', { clientId })
-      .orderBy('s.created_at', 'DESC')
+      .where('s.organizationId = :organizationId', { organizationId })
+      .orderBy('s.createdAt', 'DESC')
       .getMany();
   }
 
-  async getStaffById(clientId: string, staffId: string): Promise<Staff> {
-    const staff = await this.staffRepo.findOne({ where: { id: staffId, clientId } });
+  async getStaffById(organizationId: string, staffId: string): Promise<Staff> {
+    const staff = await this.staffRepo.findOne({ where: { id: staffId, organizationId } });
     if (!staff) throw new NotFoundException('Staff member not found');
     return staff;
   }
 
-  async updateStaff(clientId: string, staffId: string, dto: UpdateStaffDto): Promise<Staff> {
-    const staff = await this.getStaffById(clientId, staffId);
+  async updateStaff(organizationId: string, staffId: string, dto: UpdateStaffDto): Promise<Staff> {
+    const staff = await this.getStaffById(organizationId, staffId);
     Object.assign(staff, dto);
     return this.staffRepo.save(staff);
   }
 
-  async deactivateStaff(clientId: string, staffId: string): Promise<Staff> {
-    const staff = await this.getStaffById(clientId, staffId);
+  async deactivateStaff(organizationId: string, staffId: string): Promise<Staff> {
+    const staff = await this.getStaffById(organizationId, staffId);
     staff.status = 'inactive';
     return this.staffRepo.save(staff);
   }

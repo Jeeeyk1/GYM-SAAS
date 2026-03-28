@@ -1,6 +1,6 @@
 -- Seed: feature_definitions + default platform roles + permissions
 -- Idempotent: uses INSERT ... ON CONFLICT DO NOTHING
--- Run via: npm run seed
+-- Run via: pnpm seed
 
 -- ─── Feature Definitions ───────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ VALUES
     'checkin',
     TRUE,
     '{"duplicate_window_minutes": 60}',
-    ARRAY['starter','growth','enterprise']
+    ARRAY['basic','advanced','enterprise']
   ),
   (
     'checkin.loyalty_points',
@@ -22,7 +22,7 @@ VALUES
     'checkin',
     FALSE,
     '{"points_per_checkin": 10}',
-    ARRAY['growth','enterprise']
+    ARRAY['advanced','enterprise']
   ),
   (
     'checkin.welcome_message',
@@ -31,7 +31,7 @@ VALUES
     'checkin',
     FALSE,
     '{"message": "Welcome back, {first_name}! Great to see you today."}',
-    ARRAY['growth','enterprise']
+    ARRAY['advanced','enterprise']
   ),
   (
     'checkin.active_members_board',
@@ -40,7 +40,7 @@ VALUES
     'checkin',
     FALSE,
     '{"max_display": 20, "refresh_interval_seconds": 30}',
-    ARRAY['starter','growth','enterprise']
+    ARRAY['basic','advanced','enterprise']
   ),
   (
     'announcements.basic',
@@ -49,7 +49,7 @@ VALUES
     'content',
     TRUE,
     '{"max_pinned": 3}',
-    ARRAY['starter','growth','enterprise']
+    ARRAY['basic','advanced','enterprise']
   ),
   (
     'chat.gym_public',
@@ -58,7 +58,7 @@ VALUES
     'chat',
     FALSE,
     '{"max_message_length": 500, "media_enabled": false}',
-    ARRAY['growth','enterprise']
+    ARRAY['advanced','enterprise']
   ),
   (
     'analytics.basic',
@@ -67,7 +67,7 @@ VALUES
     'analytics',
     TRUE,
     '{"retention_days": 90}',
-    ARRAY['starter','growth','enterprise']
+    ARRAY['basic','advanced','enterprise']
   )
 ON CONFLICT (key) DO NOTHING;
 
@@ -99,33 +99,32 @@ VALUES
   ('audit:read',      'admin', 'View audit logs')
 ON CONFLICT (key) DO NOTHING;
 
--- ─── Default Platform Roles ────────────────────────────────────────────────
--- These are "template" roles with client_id = NULL
--- During gym onboarding, these get cloned into gym-scoped roles
+-- ─── System Role Templates ─────────────────────────────────────────────────
+-- Template roles with organization_id = NULL.
+-- admin.service.ts creates org-scoped copies when provisioning a gym.
 
-INSERT INTO roles (id, client_id, name, description, is_system)
+INSERT INTO roles (id, organization_id, name, description, is_system)
 VALUES
-  ('00000000-0000-0000-0000-000000000001', NULL, 'gym_owner',  'Full access to all gym features', TRUE),
-  ('00000000-0000-0000-0000-000000000002', NULL, 'gym_admin',  'Manage members, staff, and settings', TRUE),
-  ('00000000-0000-0000-0000-000000000003', NULL, 'front_desk', 'Check-in members and view basic info', TRUE),
-  ('00000000-0000-0000-0000-000000000004', NULL, 'member',     'Member self-service access', TRUE),
-  ('00000000-0000-0000-0000-000000000005', NULL, 'superadmin', 'Platform-level superadmin', TRUE)
-ON CONFLICT (client_id, name) DO NOTHING;
+  ('00000000-0000-0000-0000-000000000001', NULL, 'org_owner',  'Organization owner — full org-wide access', TRUE),
+  ('00000000-0000-0000-0000-000000000002', NULL, 'gym_owner',  'Branch owner — full access to one branch', TRUE),
+  ('00000000-0000-0000-0000-000000000003', NULL, 'staff',      'Branch staff — check-ins and member view', TRUE),
+  ('00000000-0000-0000-0000-000000000004', NULL, 'member',     'Gym member — self-service access', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─── Role → Permission mappings ────────────────────────────────────────────
 
--- gym_owner: everything
+-- org_owner: everything
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT '00000000-0000-0000-0000-000000000001', id FROM permissions
 ON CONFLICT DO NOTHING;
 
--- gym_admin: everything except audit
+-- gym_owner: everything except audit
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT '00000000-0000-0000-0000-000000000002', id FROM permissions
 WHERE key != 'audit:read'
 ON CONFLICT DO NOTHING;
 
--- front_desk: check-ins + member read + announcements read
+-- staff: check-ins + member read + announcements read
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT '00000000-0000-0000-0000-000000000003', id FROM permissions
 WHERE key IN ('members:read', 'checkins:read', 'checkins:create', 'announcements:read')
@@ -135,9 +134,4 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT '00000000-0000-0000-0000-000000000004', id FROM permissions
 WHERE key IN ('checkins:create', 'announcements:read')
-ON CONFLICT DO NOTHING;
-
--- superadmin: everything
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT '00000000-0000-0000-0000-000000000005', id FROM permissions
 ON CONFLICT DO NOTHING;

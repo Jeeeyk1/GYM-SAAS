@@ -43,7 +43,7 @@ async function seedPlatformAdmin() {
 
     // Idempotency check — one platform_admin is enough
     const existing = await client.query(
-      `SELECT id FROM identities WHERE account_type = 'platform_admin' LIMIT 1`,
+      `SELECT id FROM identities WHERE account_type = 'PLATFORM_ADMIN' LIMIT 1`,
     );
 
     if (existing.rows.length > 0) {
@@ -56,7 +56,7 @@ async function seedPlatformAdmin() {
     await client.query(
       `INSERT INTO identities
          (email, password_hash, provider, is_verified, account_type, platform_role)
-       VALUES ($1, $2, 'local', TRUE, 'platform_admin', 'super_admin')`,
+       VALUES ($1, $2, 'local', TRUE, 'PLATFORM_ADMIN', 'gym_admin')`,
       [email, passwordHash],
     );
 

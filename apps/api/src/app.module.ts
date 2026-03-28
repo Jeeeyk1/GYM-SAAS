@@ -5,15 +5,18 @@ import { ScheduleModule } from '@nestjs/schedule';
 import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import { dataSourceOptions } from './database/data-source';
-import { Client } from './database/entities/client.entity';
+import { Branch } from './database/entities/branch.entity';
+import { Organization } from './database/entities/organization.entity';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminModule } from './modules/admin/admin.module';
-import { ClientsModule } from './modules/clients/clients.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { MembersModule } from './modules/members/members.module';
 import { CheckInsModule } from './modules/checkins/checkins.module';
 import { EmailModule } from './modules/email/email.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { FeaturesModule } from './modules/features/features.module';
+import { BranchesModule } from './modules/branches/branches.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 
 @Module({
@@ -33,17 +36,19 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
       ...dataSourceOptions,
       autoLoadEntities: true,
     }),
-    TypeOrmModule.forFeature([Client]),
+    TypeOrmModule.forFeature([Organization, Branch]),
 
     // ─── Domain modules ───────────────────────────────────────────────────────
     EmailModule,
     AuthModule,
     AdminModule,
-    ClientsModule,
+    OrganizationsModule,
     MembersModule,
     CheckInsModule,
     StaffModule,
     FeaturesModule,
+    BranchesModule,
+    SubscriptionsModule,
   ],
 })
 export class AppModule implements NestModule {

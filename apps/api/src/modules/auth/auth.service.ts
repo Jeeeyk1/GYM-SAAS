@@ -12,7 +12,7 @@ import { AccountType, PlatformRole } from '@gym-saas/shared-types';
 import { Member } from '../../database/entities/member.entity';
 import { Identity } from '../../database/entities/identity.entity';
 import { Staff } from '../../database/entities/staff.entity';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
 import { FeatureDefinition } from '../../database/entities/feature-definition.entity';
 import { IdentityRole } from '../../database/entities/identity-role.entity';
@@ -33,12 +33,10 @@ export class AuthService {
     private readonly memberRepo: Repository<Member>,
     @InjectRepository(Staff)
     private readonly staffRepo: Repository<Staff>,
-    @InjectRepository(Client)
-    private readonly clientRepo: Repository<Client>,
+    @InjectRepository(Organization)
+    private readonly orgRepo: Repository<Organization>,
     @InjectRepository(ClientFeature)
     private readonly clientFeatureRepo: Repository<ClientFeature>,
-    @InjectRepository(FeatureDefinition)
-    private readonly featureDefRepo: Repository<FeatureDefinition>,
     @InjectRepository(Role)
     private readonly roleRepo: Repository<Role>,
     @InjectRepository(IdentityRole)
@@ -48,7 +46,7 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async login(dto: LoginDto, clientId?: string): Promise<TokenPair> {
+  async login(dto: LoginDto, organizationId?: string): Promise<TokenPair> {
     const identity = await this.identityRepo
       .createQueryBuilder('i')
       .addSelect('i.password_hash')
@@ -67,18 +65,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // If logging in under a specific gym context, block expired members
-    if (clientId) {
+    // If logging in under a specific org context, block expired members
+    if (organizationId) {
       const member = await this.memberRepo.findOne({
-        where: { identityId: identity.id, clientId },
+        where: { identityId: identity.id, organizationId },
       });
       if (member?.membershipExpiresAt && member.membershipExpiresAt < new Date()) {
-        // Staff at this gym bypass the expiry check (front_desk staff may also be a member)
+        // Staff at this org bypass the expiry check
         const staffRole = await this.identityRoleRepo.findOne({
-          where: { identityId: identity.id, clientId },
+          where: { identityId: identity.id, organizationId },
           relations: ['role'],
         });
-        const isStaff = staffRole && ['gym_owner', 'gym_admin', 'front_desk'].includes(staffRole.role.name);
+        const isStaff = staffRole && ['org_owner', 'gym_owner', 'staff'].includes(staffRole.role.name);
         if (!isStaff) {
           throw new UnauthorizedException('Membership has expired. Please renew to continue.');
         }
@@ -110,7 +108,7 @@ export class AuthService {
     return this.issueTokens(identity);
   }
 
-  async acceptInvite(dto: AcceptInviteDto): Promise<TokenPair & { gymSlug: string }> {
+  async acceptInvite(dto: AcceptInviteDto): Promise<TokenPair & { orgSlug: string }> {
     const invite = await this.inviteService.validate(dto.token);
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -121,31 +119,31 @@ export class AuthService {
 
     await this.inviteService.accept(dto.token);
 
-    // Transition the gym to active when the owner completes onboarding
+    // Transition the org to active when the owner completes onboarding
     if (invite.type === 'owner') {
-      await this.clientRepo.update({ id: invite.clientId }, { status: 'active' });
+      await this.orgRepo.update({ id: invite.organizationId }, { status: 'active' });
     }
 
     // Mark the staff record active for owner and staff invite types
     if (invite.type === 'owner' || invite.type === 'staff') {
       await this.staffRepo.update(
-        { identityId: invite.identityId, clientId: invite.clientId },
+        { identityId: invite.identityId, organizationId: invite.organizationId },
         { status: 'active' },
       );
     }
 
     // Invites are always for gym users — platform admins are seeded, not invited
-    return { ...this.issueTokens(invite.identity), gymSlug: invite.client.slug };
+    return { ...this.issueTokens(invite.identity), orgSlug: invite.organization.slug };
   }
 
   async selfRegister(
     dto: SelfRegisterDto,
-    clientId: string,
+    organizationId: string,
   ): Promise<TokenPair> {
     const feature = await this.clientFeatureRepo
       .createQueryBuilder('cf')
       .innerJoin(FeatureDefinition, 'fd', 'fd.id = cf.feature_id')
-      .where('cf.client_id = :clientId', { clientId })
+      .where('cf.organizationId = :organizationId', { organizationId })
       .andWhere('fd.key = :key', { key: 'member_self_registration' })
       .andWhere('cf.is_enabled = true')
       .getOne();
@@ -157,7 +155,7 @@ export class AuthService {
     const existing = await this.identityRepo.findOne({ where: { email: dto.email } });
     if (existing) {
       const alreadyMember = await this.memberRepo.findOne({
-        where: { identityId: existing.id, clientId },
+        where: { identityId: existing.id, organizationId },
       });
       if (alreadyMember) throw new BadRequestException('An account with this email already exists for this gym');
     }
@@ -178,7 +176,7 @@ export class AuthService {
     }
 
     const member = this.memberRepo.create({
-      clientId,
+      organizationId,
       identityId: identity.id,
       firstName: dto.firstName,
       lastName: dto.lastName,
@@ -188,13 +186,13 @@ export class AuthService {
     await this.memberRepo.save(member);
 
     // Assign member role so GymRoleGuard recognises self-registered members
-    const memberRole = await this.roleRepo.findOne({ where: { name: 'member', clientId } });
+    const memberRole = await this.roleRepo.findOne({ where: { name: 'member', organizationId } });
     if (memberRole) {
       await this.identityRoleRepo.save(
         this.identityRoleRepo.create({
           identityId: identity.id,
           roleId: memberRole.id,
-          clientId,
+          organizationId,
           assignedBy: null,
         }),
       );

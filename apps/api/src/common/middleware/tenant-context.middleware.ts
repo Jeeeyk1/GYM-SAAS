@@ -2,13 +2,15 @@ import { Injectable, NestMiddleware, BadRequestException, ForbiddenException } f
 import { Request, Response, NextFunction } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Client } from '../../database/entities/client.entity';
+import { Branch } from '../../database/entities/branch.entity';
+import { Organization } from '../../database/entities/organization.entity';
 
 export interface TenantContext {
-  clientId: string;
-  clientSlug: string;
+  organizationId: string;
+  orgSlug: string;
   plan: string;
   isDemo: boolean;
+  branchId: string | null;
 }
 
 declare global {
@@ -22,52 +24,63 @@ declare global {
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   constructor(
-    @InjectRepository(Client)
-    private readonly clientRepo: Repository<Client>,
+    @InjectRepository(Organization)
+    private readonly orgRepo: Repository<Organization>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
   ) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
-    // Resolution priority:
-    // 1. x-gym-slug header (used by mobile apps)
-    // 2. Subdomain (web: gym-slug.gymsaas.com)
-    // 3. Skip — some routes (auth, health) don't need tenant context
-
     const slug = this.resolveSlug(req);
 
     if (!slug) {
-      // Let it through — route guards will enforce tenant requirement
       return next();
     }
 
-    const client = await this.clientRepo.findOne({
+    const org = await this.orgRepo.findOne({
       where: { slug },
-      select: ['id', 'slug', 'plan', 'status', 'isDemo'],
+      relations: { subscription: true },
     });
 
-    if (!client) {
-      throw new BadRequestException(`Gym '${slug}' not found`);
+    if (!org) {
+      throw new BadRequestException(`Organization '${slug}' not found`);
     }
 
-    if (client.status === 'suspended') {
-      throw new ForbiddenException('This gym account is suspended');
+    if (org.status === 'suspended') {
+      throw new ForbiddenException('This organization account is suspended');
     }
 
-    if (client.isDemo && client.demoExpiresAt && client.demoExpiresAt < new Date()) {
-      throw new ForbiddenException('Demo period has expired');
-    }
+    const branchId = await this.resolveBranchId(req, org.id);
 
     req.tenantContext = {
-      clientId: client.id,
-      clientSlug: client.slug,
-      plan: client.plan,
-      isDemo: client.isDemo,
+      organizationId: org.id,
+      orgSlug: org.slug,
+      plan: org.subscription?.plan ?? 'basic',
+      isDemo: org.isDemo,
+      branchId,
     };
 
     next();
   }
 
+  private async resolveBranchId(req: Request, organizationId: string): Promise<string | null> {
+    const branchHeader = req.headers['x-branch-id'] as string | undefined;
+    if (!branchHeader) return null;
+
+    const branch = await this.branchRepo.findOne({
+      where: { id: branchHeader, organizationId, isActive: true },
+      select: ['id'],
+    });
+
+    if (!branch) {
+      throw new BadRequestException('Branch not found or inactive');
+    }
+
+    return branch.id;
+  }
+
   private resolveSlug(req: Request): string | null {
-    const headerSlug = req.headers['x-gym-slug'] as string | undefined;
+    const headerSlug = req.headers['x-org-slug'] as string | undefined;
     if (headerSlug) return headerSlug.toLowerCase().trim();
 
     const host = req.hostname || '';

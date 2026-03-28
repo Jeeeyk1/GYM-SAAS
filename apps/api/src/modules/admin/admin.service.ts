@@ -2,9 +2,11 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
-import { Client } from '../../database/entities/client.entity';
+import { Organization } from '../../database/entities/organization.entity';
+import { OrganizationProfile } from '../../database/entities/organization-profile.entity';
+import { Branch } from '../../database/entities/branch.entity';
+import { Subscription } from '../../database/entities/subscription.entity';
 import { ClientFeature } from '../../database/entities/client-feature.entity';
-import { ClientProfile } from '../../database/entities/client-profile.entity';
 import { FeatureDefinition } from '../../database/entities/feature-definition.entity';
 import { Identity } from '../../database/entities/identity.entity';
 import { Staff } from '../../database/entities/staff.entity';
@@ -13,11 +15,12 @@ import { IdentityRole } from '../../database/entities/identity-role.entity';
 import { Role } from '../../database/entities/role.entity';
 import { EmailService } from '../email/email.service';
 import { CreateGymDto } from './dto/create-gym.dto';
+import { PLAN_LIMITS, PlanName } from '@gym-saas/shared-config';
 
 const SYSTEM_ROLES = [
-  { name: 'gym_owner', description: 'Full gym owner access', isSystem: true },
-  { name: 'gym_admin', description: 'Gym administrator', isSystem: true },
-  { name: 'front_desk', description: 'Front desk staff', isSystem: true },
+  { name: 'org_owner', description: 'Organization owner — full org-wide access', isSystem: true },
+  { name: 'gym_owner', description: 'Branch owner — full access to one branch', isSystem: true },
+  { name: 'staff', description: 'Branch staff', isSystem: true },
   { name: 'member', description: 'Gym member', isSystem: true },
 ];
 
@@ -33,46 +36,66 @@ export class AdminService {
     private readonly emailService: EmailService,
   ) {}
 
-  async createGym(dto: CreateGymDto): Promise<{ client: Client; ownerStaff: Staff; inviteToken: string }> {
-    const existing = await this.dataSource.getRepository(Client).findOne({ where: { slug: dto.slug } });
+  async createGym(dto: CreateGymDto): Promise<{ organization: Organization; ownerStaff: Staff; inviteToken: string }> {
+    const existing = await this.dataSource.getRepository(Organization).findOne({ where: { slug: dto.slug } });
     if (existing) throw new ConflictException(`Slug "${dto.slug}" is already taken`);
 
     const featureDefs = await this.featureDefRepo.find({ where: { isActive: true } });
+    const plan = (dto.plan ?? 'basic') as PlanName;
+    const limits = PLAN_LIMITS[plan];
 
     const result = await this.dataSource.transaction(async (em) => {
-      const client = await em.save(
-        em.create(Client, {
+      const organization = await em.save(
+        em.create(Organization, {
           slug: dto.slug,
           name: dto.name,
           status: 'onboarding',
-          plan: (dto.plan ?? 'starter') as any,
           isDemo: dto.isDemo ?? false,
-          demoExpiresAt: dto.demoExpiresAt ? new Date(dto.demoExpiresAt) : null,
         }),
       );
 
-      const profile = await em.save(em.create(ClientProfile, { clientId: client.id,email: dto.ownerEmail}));
-
-      if (dto.address || dto.phone || dto.timezone) {
-        await em.update(ClientProfile, profile.id, {
+      await em.save(
+        em.create(OrganizationProfile, {
+          organizationId: organization.id,
+          email: dto.ownerEmail,
           ...(dto.address && { address: dto.address }),
           ...(dto.phone && { phone: dto.phone }),
           ...(dto.timezone && { timezone: dto.timezone }),
-        });
-      }
+        }),
+      );
+
+      const branch = await em.save(
+        em.create(Branch, {
+          organizationId: organization.id,
+          name: 'Main Branch',
+          isActive: true,
+        }),
+      );
+
+      await em.save(
+        em.create(Subscription, {
+          organizationId: organization.id,
+          plan,
+          maxMembers: limits.maxMembers,
+          maxBranches: limits.maxBranches,
+          aiTokenLimit: limits.aiTokenLimit,
+          expiresAt: null,
+          autoRenew: true,
+        }),
+      );
 
       if (featureDefs.length > 0) {
         await em.save(
           featureDefs.map((fd) =>
-            em.create(ClientFeature, { clientId: client.id, featureId: fd.id, isEnabled: fd.defaultEnabled }),
+            em.create(ClientFeature, { organizationId: organization.id, featureId: fd.id, isEnabled: fd.defaultEnabled }),
           ),
         );
       }
 
       const roles = await em.save(
-        SYSTEM_ROLES.map((r) => em.create(Role, { clientId: client.id, ...r })),
+        SYSTEM_ROLES.map((r) => em.create(Role, { organizationId: organization.id, ...r })),
       );
-      const ownerRole = roles.find((r) => r.name === 'gym_owner')!;
+      const ownerRole = roles.find((r) => r.name === 'org_owner')!;
 
       const identity = await em.save(
         em.create(Identity, { email: dto.ownerEmail, provider: 'local', isVerified: false }),
@@ -80,7 +103,8 @@ export class AdminService {
 
       const staff = await em.save(
         em.create(Staff, {
-          clientId: client.id,
+          organizationId: organization.id,
+          branchId: branch.id,
           identityId: identity.id,
           firstName: dto.ownerFirstName,
           lastName: dto.ownerLastName,
@@ -88,11 +112,13 @@ export class AdminService {
         }),
       );
 
+      // org_owner has no branchId (org-wide scope)
       await em.save(
         em.create(IdentityRole, {
           identityId: identity.id,
           roleId: ownerRole.id,
-          clientId: client.id,
+          organizationId: organization.id,
+          branchId: null,
           assignedBy: null,
         }),
       );
@@ -101,9 +127,9 @@ export class AdminService {
       const invite = await em.save(
         em.create(Invite, {
           token: randomBytes(32).toString('hex'),
-          clientId: client.id,
+          organizationId: organization.id,
           identityId: identity.id,
-          role: 'gym_owner',
+          role: 'org_owner',
           type: 'owner',
           invitedBy: null,
           status: 'pending',
@@ -112,7 +138,7 @@ export class AdminService {
         }),
       );
 
-      return { client, ownerStaff: staff, inviteToken: invite.token };
+      return { organization, ownerStaff: staff, inviteToken: invite.token };
     });
 
     try {
@@ -129,8 +155,8 @@ export class AdminService {
     return result;
   }
 
-  async listGyms(): Promise<Client[]> {
-    return this.dataSource.getRepository(Client).find({
+  async listGyms(): Promise<Organization[]> {
+    return this.dataSource.getRepository(Organization).find({
       relations: ['profile'],
       order: { createdAt: 'DESC' },
     });
